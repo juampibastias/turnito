@@ -1,103 +1,503 @@
-import Image from "next/image";
+'use client';
+import { useState, useEffect } from 'react';
+import { format, addDays } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    const [step, setStep] = useState(1);
+    const [selectedDate, setSelectedDate] = useState('');
+    const [availableDates, setAvailableDates] = useState([]);
+    const [zones, setZones] = useState([]);
+    const [selectedZones, setSelectedZones] = useState([]);
+    const [availableSlots, setAvailableSlots] = useState([]);
+    const [selectedSlot, setSelectedSlot] = useState(null);
+    const [clientData, setClientData] = useState({
+        name: '',
+        lastName: '',
+        phone: '',
+    });
+    const [loading, setLoading] = useState(false);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    // Cargar fechas disponibles
+    useEffect(() => {
+        fetchAvailableDates();
+    }, []);
+
+    const fetchAvailableDates = async () => {
+        try {
+            const response = await fetch('/api/admin/available-days');
+            const data = await response.json();
+            const enabledDates = data.filter((day) => day.isEnabled);
+            setAvailableDates(enabledDates);
+        } catch (error) {
+            console.error('Error fetching available dates:', error);
+        }
+    };
+
+    const fetchZones = async (date) => {
+        try {
+            const response = await fetch(`/api/zones?date=${date}`);
+            const data = await response.json();
+            setZones(data);
+        } catch (error) {
+            console.error('Error fetching zones:', error);
+        }
+    };
+
+    const fetchAvailableSlots = async (date, duration) => {
+        const response = await fetch(
+            `/api/available-slots?date=${date}&duration=${duration}`
+        );
+        const data = await response.json();
+        console.log('[FRONT] Slots recibidos:', data);
+        setAvailableSlots(data);
+    };
+
+    const handleDateSelect = (date) => {
+        const dateString =
+            date instanceof Date ? date.toISOString().split('T')[0] : date;
+        console.log('[FRONT] Fecha seleccionada:', dateString);
+
+        setSelectedDate(dateString);
+        fetchZones(dateString);
+        setStep(2);
+    };
+
+    const handleZoneToggle = (zone) => {
+        setSelectedZones((prev) => {
+            const exists = prev.find((z) => z.name === zone.name);
+            if (exists) {
+                return prev.filter((z) => z.name !== zone.name);
+            } else {
+                return [...prev, zone];
+            }
+        });
+    };
+
+    const getTotalPrice = () => {
+        return selectedZones.reduce((sum, zone) => sum + zone.price, 0);
+    };
+
+    const getTotalDuration = () => {
+        return selectedZones.reduce((sum, zone) => sum + zone.duration, 0);
+    };
+
+    const proceedToTimeSelection = () => {
+        if (selectedZones.length === 0) return;
+        setStep(3);
+    };
+
+    const proceedToClientData = () => {
+        if (!selectedSlot) return;
+        setStep(4);
+    };
+
+    const handleBooking = async (e) => {
+        e.preventDefault();
+        if (!clientData.name || !clientData.lastName || !clientData.phone)
+            return;
+
+        setLoading(true);
+        try {
+            const response = await fetch('/api/appointments', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    clientName: clientData.name,
+                    clientLastName: clientData.lastName,
+                    clientPhone: clientData.phone,
+                    selectedZones,
+                    appointmentDate: selectedDate,
+                    timeSlot: selectedSlot,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.initPoint) {
+                window.location.href = data.initPoint;
+            }
+        } catch (error) {
+            console.error('Error creating booking:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (step === 3 && selectedDate && selectedZones.length > 0) {
+            const duration = getTotalDuration();
+            console.log('[FRONT] Buscando horarios con duración:', duration);
+            fetchAvailableSlots(selectedDate, duration);
+        }
+    }, [step, selectedDate, selectedZones]);
+
+    return (
+        <div className='min-h-screen px-4 py-12 bg-gradient-to-br from-pink-50 to-purple-100'>
+            <div className='max-w-4xl mx-auto'>
+                <div className='overflow-hidden bg-white shadow-2xl rounded-3xl'>
+                    <div className='p-8 text-white bg-gradient-to-r from-pink-500 to-purple-600'>
+                        <h1 className='mb-2 text-4xl font-bold text-center'>
+                            Reserva tu Turno
+                        </h1>
+                        <p className='text-center text-pink-100'>
+                            Depilación profesional con la mejor atención
+                        </p>
+                    </div>
+
+                    <div className='p-4 sm:p-8'>
+                        {/* Indicador de pasos */}
+                        <div className='flex justify-center mb-8'>
+                            <div className='flex items-center space-x-2 sm:space-x-4'>
+                                {[1, 2, 3, 4].map((num) => (
+                                    <div
+                                        key={num}
+                                        className='flex items-center'
+                                    >
+                                        <div
+                                            className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-sm sm:text-base ${
+                                                step >= num
+                                                    ? 'bg-pink-500 text-white'
+                                                    : 'bg-gray-200 text-gray-700'
+                                            }`}
+                                        >
+                                            {num}
+                                        </div>
+                                        {num < 4 && (
+                                            <div
+                                                className={`w-4 sm:w-8 h-1 ${
+                                                    step > num
+                                                        ? 'bg-pink-500'
+                                                        : 'bg-gray-200'
+                                                }`}
+                                            />
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Paso 1: Seleccionar fecha */}
+                        {step === 1 && (
+                            <div className='text-center'>
+                                <h2 className='mb-6 text-xl font-bold text-gray-800 sm:text-2xl'>
+                                    Selecciona una fecha
+                                </h2>
+                                <div className='grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4'>
+                                    {availableDates.map((day) => (
+                                        <button
+                                            key={day._id}
+                                            onClick={() =>
+                                                handleDateSelect(day.date)
+                                            }
+                                            className='p-3 transition-all duration-200 border-2 border-pink-200 rounded-lg sm:p-4 hover:border-pink-500 hover:bg-pink-50 active:bg-pink-100'
+                                        >
+                                            <div className='text-sm font-semibold text-gray-800 sm:text-base'>
+                                                {format(
+                                                    new Date(day.date),
+                                                    'dd MMM',
+                                                    { locale: es }
+                                                )}
+                                            </div>
+                                            <div className='text-xs text-gray-700 sm:text-sm'>
+                                                {format(
+                                                    new Date(day.date),
+                                                    'EEEE',
+                                                    { locale: es }
+                                                )}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Paso 2: Seleccionar zonas */}
+                        {step === 2 && (
+                            <div>
+                                <h2 className='mb-6 text-xl font-bold text-center text-gray-800 sm:text-2xl'>
+                                    Selecciona las zonas a depilar
+                                </h2>
+                                <div className='grid grid-cols-1 gap-4 mb-6 md:grid-cols-2'>
+                                    {zones.map((zone) => (
+                                        <div
+                                            key={zone.name}
+                                            onClick={() =>
+                                                handleZoneToggle(zone)
+                                            }
+                                            className={`p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 active:scale-95 ${
+                                                selectedZones.find(
+                                                    (z) => z.name === zone.name
+                                                )
+                                                    ? 'border-pink-500 bg-pink-50'
+                                                    : 'border-gray-200 hover:border-pink-300'
+                                            }`}
+                                        >
+                                            <div className='flex items-center justify-between'>
+                                                <div>
+                                                    <h3 className='text-sm font-semibold text-gray-800 sm:text-base'>
+                                                        {zone.name}
+                                                    </h3>
+                                                    <p className='text-sm text-gray-700'>
+                                                        {zone.duration} minutos
+                                                    </p>
+                                                </div>
+                                                <div className='text-lg font-bold text-pink-600 sm:text-xl'>
+                                                    ${zone.price}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {selectedZones.length > 0 && (
+                                    <div className='p-4 mb-6 border border-pink-200 rounded-lg bg-pink-50'>
+                                        <h3 className='mb-2 font-semibold text-gray-800'>
+                                            Resumen:
+                                        </h3>
+                                        <div className='space-y-1 text-sm text-gray-800 sm:text-base'>
+                                            <p>
+                                                Zonas seleccionadas:{' '}
+                                                <span className='font-semibold'>
+                                                    {selectedZones.length}
+                                                </span>
+                                            </p>
+                                            <p>
+                                                Tiempo total:{' '}
+                                                <span className='font-semibold'>
+                                                    {getTotalDuration()} minutos
+                                                </span>
+                                            </p>
+                                            <p>
+                                                Precio total:{' '}
+                                                <span className='font-semibold'>
+                                                    ${getTotalPrice()}
+                                                </span>
+                                            </p>
+                                            <p className='font-bold text-pink-600'>
+                                                Seña (50%): $
+                                                {getTotalPrice() * 0.5}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className='flex flex-col justify-between gap-3 sm:flex-row sm:gap-0'>
+                                    <button
+                                        onClick={() => setStep(1)}
+                                        className='px-6 py-3 font-medium text-gray-700 transition-colors bg-gray-300 rounded-lg hover:bg-gray-400 active:bg-gray-500'
+                                    >
+                                        Atrás
+                                    </button>
+                                    <button
+                                        onClick={proceedToTimeSelection}
+                                        disabled={selectedZones.length === 0}
+                                        className='px-6 py-3 font-medium text-white transition-colors bg-pink-500 rounded-lg hover:bg-pink-600 active:bg-pink-700 disabled:bg-gray-300 disabled:text-gray-500'
+                                    >
+                                        Continuar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Paso 3: Seleccionar horario */}
+                        {step === 3 && (
+                            <div>
+                                <h2 className='mb-6 text-xl font-bold text-center text-gray-800 sm:text-2xl'>
+                                    Selecciona un horario
+                                </h2>
+
+                                {availableSlots.length === 0 ? (
+                                    <div className='p-4 mb-6 text-center text-gray-700 border border-yellow-200 rounded-lg bg-yellow-50'>
+                                        <p className='font-medium'>
+                                            No hay turnos disponibles para ese
+                                            día.
+                                        </p>
+                                        <p className='mt-1 text-sm'>
+                                            Por favor, selecciona otra fecha.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className='grid grid-cols-2 gap-3 mb-6 sm:gap-4 md:grid-cols-3 lg:grid-cols-4'>
+                                        {availableSlots.map((slot, index) => (
+                                            <button
+                                                key={index}
+                                                onClick={() =>
+                                                    setSelectedSlot(slot)
+                                                }
+                                                className={`p-3 sm:p-4 border-2 rounded-lg transition-all duration-200 active:scale-95 ${
+                                                    selectedSlot?.start ===
+                                                        slot.start &&
+                                                    selectedSlot?.end ===
+                                                        slot.end
+                                                        ? 'border-pink-500 bg-pink-50'
+                                                        : 'border-gray-200 hover:border-pink-300'
+                                                }`}
+                                            >
+                                                <div className='text-sm font-semibold text-gray-800 sm:text-base'>
+                                                    {slot.start} - {slot.end}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className='flex flex-col justify-between gap-3 sm:flex-row sm:gap-0'>
+                                    <button
+                                        onClick={() => setStep(2)}
+                                        className='px-6 py-3 font-medium text-gray-700 transition-colors bg-gray-300 rounded-lg hover:bg-gray-400 active:bg-gray-500'
+                                    >
+                                        Atrás
+                                    </button>
+                                    <button
+                                        onClick={proceedToClientData}
+                                        disabled={!selectedSlot}
+                                        className='px-6 py-3 font-medium text-white transition-colors bg-pink-500 rounded-lg hover:bg-pink-600 active:bg-pink-700 disabled:bg-gray-300 disabled:text-gray-500'
+                                    >
+                                        Continuar
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Paso 4: Datos del cliente */}
+                        {step === 4 && (
+                            <div>
+                                <h2 className='mb-6 text-xl font-bold text-center text-gray-800 sm:text-2xl'>
+                                    Completa tus datos
+                                </h2>
+                                <form
+                                    onSubmit={handleBooking}
+                                    className='space-y-6'
+                                >
+                                    <div className='max-w-md mx-auto space-y-4'>
+                                        <div>
+                                            <label className='block mb-2 text-sm font-medium text-gray-800'>
+                                                Nombre *
+                                            </label>
+                                            <input
+                                                type='text'
+                                                value={clientData.name}
+                                                onChange={(e) =>
+                                                    setClientData((prev) => ({
+                                                        ...prev,
+                                                        name: e.target.value,
+                                                    }))
+                                                }
+                                                className='w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent'
+                                                placeholder='Tu nombre'
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className='block mb-2 text-sm font-medium text-gray-800'>
+                                                Apellido *
+                                            </label>
+                                            <input
+                                                type='text'
+                                                value={clientData.lastName}
+                                                onChange={(e) =>
+                                                    setClientData((prev) => ({
+                                                        ...prev,
+                                                        lastName:
+                                                            e.target.value,
+                                                    }))
+                                                }
+                                                className='w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent'
+                                                placeholder='Tu apellido'
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className='block mb-2 text-sm font-medium text-gray-800'>
+                                                Teléfono *
+                                            </label>
+                                            <input
+                                                type='tel'
+                                                value={clientData.phone}
+                                                onChange={(e) =>
+                                                    setClientData((prev) => ({
+                                                        ...prev,
+                                                        phone: e.target.value,
+                                                    }))
+                                                }
+                                                className='w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent'
+                                                placeholder='Tu número de teléfono'
+                                                required
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className='p-4 border border-pink-200 rounded-lg sm:p-6 bg-pink-50'>
+                                        <h3 className='mb-4 text-lg font-bold text-gray-800'>
+                                            Resumen de tu turno:
+                                        </h3>
+                                        <div className='space-y-2 text-sm text-gray-800 sm:text-base'>
+                                            <p>
+                                                <strong>Fecha:</strong>{' '}
+                                                {format(
+                                                    new Date(selectedDate),
+                                                    "dd 'de' MMMM 'de' yyyy",
+                                                    { locale: es }
+                                                )}
+                                            </p>
+                                            <p>
+                                                <strong>Horario:</strong>{' '}
+                                                {selectedSlot?.start} -{' '}
+                                                {selectedSlot?.end}
+                                            </p>
+                                            <p>
+                                                <strong>Zonas:</strong>{' '}
+                                                {selectedZones
+                                                    .map((z) => z.name)
+                                                    .join(', ')}
+                                            </p>
+                                            <p>
+                                                <strong>Duración total:</strong>{' '}
+                                                {getTotalDuration()} minutos
+                                            </p>
+                                            <p>
+                                                <strong>Precio total:</strong> $
+                                                {getTotalPrice()}
+                                            </p>
+                                            <p className='text-base font-bold text-pink-600 sm:text-lg'>
+                                                <strong>Seña a pagar:</strong> $
+                                                {getTotalPrice() * 0.5}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className='flex flex-col justify-between gap-3 sm:flex-row sm:gap-0'>
+                                        <button
+                                            type='button'
+                                            onClick={() => setStep(3)}
+                                            className='px-6 py-3 font-medium text-gray-700 transition-colors bg-gray-300 rounded-lg hover:bg-gray-400 active:bg-gray-500'
+                                        >
+                                            Atrás
+                                        </button>
+                                        <button
+                                            type='submit'
+                                            disabled={
+                                                !clientData.name ||
+                                                !clientData.lastName ||
+                                                !clientData.phone ||
+                                                loading
+                                            }
+                                            className='px-6 sm:px-8 py-3 font-semibold text-white rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 active:from-pink-700 active:to-purple-800 disabled:bg-gray-300 disabled:text-gray-500 transition-all duration-200 min-h-[48px] touch-manipulation'
+                                        >
+                                            {loading
+                                                ? 'Procesando...'
+                                                : 'Reservar y Pagar'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+    );
 }
