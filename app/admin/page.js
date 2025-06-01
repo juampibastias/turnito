@@ -18,11 +18,25 @@ export default function AdminPanel() {
             { name: 'Brazos completos', price: 2000, duration: 45 },
         ],
     });
+    const [appointments, setAppointments] = useState([]);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         checkAuth();
     }, []);
+
+    const fetchAppointments = async () => {
+        const res = await fetch('/api/admin/appointments');
+        const data = await res.json();
+        setAppointments(data);
+    };
+
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetchAvailableDays();
+            fetchAppointments(); // << agrega esto
+        }
+    }, [isAuthenticated]);
 
     const checkAuth = () => {
         // En una implementación real, verificarías el token aquí
@@ -171,13 +185,13 @@ export default function AdminPanel() {
 
     if (!isAuthenticated) {
         return (
-            <div className='min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8'>
-                <div className='max-w-md w-full space-y-8'>
+            <div className='flex items-center justify-center min-h-screen px-4 py-12 bg-gray-50 sm:px-6 lg:px-8'>
+                <div className='w-full max-w-md space-y-8'>
                     <div>
-                        <h2 className='mt-6 text-center text-3xl font-extrabold text-gray-900'>
+                        <h2 className='mt-6 text-3xl font-extrabold text-center text-gray-900'>
                             Panel de Administración
                         </h2>
-                        <p className='mt-2 text-center text-sm text-gray-600'>
+                        <p className='mt-2 text-sm text-center text-gray-600'>
                             Ingresa la contraseña para acceder
                         </p>
                     </div>
@@ -193,7 +207,7 @@ export default function AdminPanel() {
                                 required
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className='appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm'
+                                className='relative block w-full px-3 py-2 text-gray-900 placeholder-gray-500 border border-gray-300 rounded-md appearance-none focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm'
                                 placeholder='Contraseña'
                             />
                         </div>
@@ -201,7 +215,7 @@ export default function AdminPanel() {
                             <button
                                 type='submit'
                                 disabled={loading}
-                                className='group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400'
+                                className='relative flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400'
                             >
                                 {loading ? 'Cargando...' : 'Ingresar'}
                             </button>
@@ -213,21 +227,21 @@ export default function AdminPanel() {
     }
 
     return (
-        <div className='min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8'>
-            <div className='max-w-7xl mx-auto'>
-                <div className='bg-white shadow rounded-lg p-6 mb-8'>
-                    <h1 className='text-3xl font-bold text-gray-900 mb-8'>
+        <div className='min-h-screen px-4 py-12 bg-gray-50 sm:px-6 lg:px-8'>
+            <div className='mx-auto max-w-7xl'>
+                <div className='p-6 mb-8 bg-white rounded-lg shadow'>
+                    <h1 className='mb-8 text-3xl font-bold text-gray-900'>
                         Panel de Administración
                     </h1>
 
                     {/* Formulario para crear nuevo día */}
                     <div className='mb-12'>
-                        <h2 className='text-2xl font-semibold text-gray-800 mb-6'>
+                        <h2 className='mb-6 text-2xl font-semibold text-gray-800'>
                             Crear Nuevo Día Disponible
                         </h2>
                         <form onSubmit={handleCreateDay} className='space-y-6'>
                             <div>
-                                <label className='block text-sm font-medium text-gray-700 mb-2'>
+                                <label className='block mb-2 text-sm font-medium text-gray-700'>
                                     Fecha
                                 </label>
                                 <input
@@ -246,14 +260,14 @@ export default function AdminPanel() {
 
                             {/* Horarios disponibles */}
                             <div>
-                                <div className='flex justify-between items-center mb-4'>
+                                <div className='flex items-center justify-between mb-4'>
                                     <label className='block text-sm font-medium text-gray-700'>
                                         Horarios Disponibles
                                     </label>
                                     <button
                                         type='button'
                                         onClick={addTimeSlot}
-                                        className='px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600'
+                                        className='px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600'
                                     >
                                         Agregar Horario
                                     </button>
@@ -261,7 +275,7 @@ export default function AdminPanel() {
                                 {newDay.timeSlots.map((slot, index) => (
                                     <div
                                         key={index}
-                                        className='flex items-center space-x-4 mb-2'
+                                        className='flex items-center mb-2 space-x-4'
                                     >
                                         <input
                                             type='time'
@@ -294,7 +308,7 @@ export default function AdminPanel() {
                                                 onClick={() =>
                                                     removeTimeSlot(index)
                                                 }
-                                                className='px-2 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600'
+                                                className='px-2 py-1 text-sm text-white bg-red-500 rounded hover:bg-red-600'
                                             >
                                                 Eliminar
                                             </button>
@@ -305,14 +319,14 @@ export default function AdminPanel() {
 
                             {/* Zonas y precios */}
                             <div>
-                                <div className='flex justify-between items-center mb-4'>
+                                <div className='flex items-center justify-between mb-4'>
                                     <label className='block text-sm font-medium text-gray-700'>
                                         Zonas y Precios
                                     </label>
                                     <button
                                         type='button'
                                         onClick={addZone}
-                                        className='px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600'
+                                        className='px-3 py-1 text-sm text-white bg-green-500 rounded hover:bg-green-600'
                                     >
                                         Agregar Zona
                                     </button>
@@ -321,7 +335,7 @@ export default function AdminPanel() {
                                     {newDay.zones.map((zone, index) => (
                                         <div
                                             key={index}
-                                            className='grid grid-cols-4 gap-4 items-center'
+                                            className='grid items-center grid-cols-4 gap-4'
                                         >
                                             <input
                                                 type='text'
@@ -374,7 +388,7 @@ export default function AdminPanel() {
                                                 onClick={() =>
                                                     removeZone(index)
                                                 }
-                                                className='px-2 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600'
+                                                className='px-2 py-1 text-sm text-white bg-red-500 rounded hover:bg-red-600'
                                             >
                                                 Eliminar
                                             </button>
@@ -386,7 +400,7 @@ export default function AdminPanel() {
                             <button
                                 type='submit'
                                 disabled={loading}
-                                className='w-full px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-400'
+                                className='w-full px-4 py-2 text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-400'
                             >
                                 {loading
                                     ? 'Creando...'
@@ -397,26 +411,26 @@ export default function AdminPanel() {
 
                     {/* Lista de días disponibles */}
                     <div>
-                        <h2 className='text-2xl font-semibold text-gray-800 mb-6'>
+                        <h2 className='mb-6 text-2xl font-semibold text-gray-800'>
                             Días Disponibles
                         </h2>
                         <div className='overflow-x-auto'>
                             <table className='min-w-full divide-y divide-gray-200'>
                                 <thead className='bg-gray-50'>
                                     <tr>
-                                        <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+                                        <th className='px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase'>
                                             Fecha
                                         </th>
-                                        <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+                                        <th className='px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase'>
                                             Estado
                                         </th>
-                                        <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+                                        <th className='px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase'>
                                             Horarios
                                         </th>
-                                        <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+                                        <th className='px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase'>
                                             Zonas
                                         </th>
-                                        <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider'>
+                                        <th className='px-6 py-3 text-xs font-medium tracking-wider text-left text-gray-500 uppercase'>
                                             Acciones
                                         </th>
                                     </tr>
@@ -424,7 +438,7 @@ export default function AdminPanel() {
                                 <tbody className='bg-white divide-y divide-gray-200'>
                                     {availableDays.map((day) => (
                                         <tr key={day._id}>
-                                            <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900'>
+                                            <td className='px-6 py-4 text-sm font-medium text-gray-900 whitespace-nowrap'>
                                                 {format(
                                                     new Date(day.date),
                                                     'dd MMM yyyy',
@@ -458,7 +472,7 @@ export default function AdminPanel() {
                                                 {day.zones.length} zonas
                                                 disponibles
                                             </td>
-                                            <td className='px-6 py-4 whitespace-nowrap text-sm font-medium'>
+                                            <td className='px-6 py-4 text-sm font-medium whitespace-nowrap'>
                                                 <button
                                                     onClick={() =>
                                                         toggleDayStatus(
@@ -483,6 +497,66 @@ export default function AdminPanel() {
                             </table>
                         </div>
                     </div>
+                </div>
+            </div>
+            {/* Turnos reservados */}
+            <div className='mt-12'>
+                <h2 className='mb-6 text-2xl font-semibold text-gray-800'>
+                    Turnos Reservados
+                </h2>
+                <div className='overflow-x-auto'>
+                    <table className='min-w-full divide-y divide-gray-200'>
+                        <thead className='bg-gray-50'>
+                            <tr>
+                                <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                    Fecha
+                                </th>
+                                <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                    Horario
+                                </th>
+                                <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                    Cliente
+                                </th>
+                                <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                    Teléfono
+                                </th>
+                                <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                    Zonas
+                                </th>
+                                <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                    Estado
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className='bg-white divide-y divide-gray-200'>
+                            {appointments.map((a, i) => (
+                                <tr key={i}>
+                                    <td className='px-6 py-4 text-sm text-gray-900'>
+                                        {new Date(
+                                            a.appointmentDate
+                                        ).toLocaleDateString('es-AR')}
+                                    </td>
+                                    <td className='px-6 py-4 text-sm text-gray-900'>
+                                        {a.timeSlot.start} - {a.timeSlot.end}
+                                    </td>
+                                    <td className='px-6 py-4 text-sm text-gray-900'>
+                                        {a.clientName} {a.clientLastName}
+                                    </td>
+                                    <td className='px-6 py-4 text-sm text-gray-900'>
+                                        {a.clientPhone}
+                                    </td>
+                                    <td className='px-6 py-4 text-sm text-gray-900'>
+                                        {a.selectedZones
+                                            .map((z) => z.name)
+                                            .join(', ')}
+                                    </td>
+                                    <td className='px-6 py-4 text-sm text-gray-900'>
+                                        {a.status}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
