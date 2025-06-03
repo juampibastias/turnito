@@ -16,6 +16,7 @@ export const appointmentSchema = {
     },
     totalPrice: Number,
     totalDuration: Number,
+    depositAmount: Number,
     paymentStatus: String, // 'pending', 'paid', 'failed'
     paymentId: String,
     status: String, // 'confirmed', 'cancelled', 'completed'

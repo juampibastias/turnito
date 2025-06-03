@@ -32,10 +32,13 @@ export default function AdminPanel() {
     };
 
     useEffect(() => {
+        let intervalId;
         if (isAuthenticated) {
             fetchAvailableDays();
-            fetchAppointments(); // << agrega esto
+            fetchAppointments();
+            intervalId = setInterval(fetchAppointments, 30000);
         }
+        return () => clearInterval(intervalId);
     }, [isAuthenticated]);
 
     const checkAuth = () => {
