@@ -35,6 +35,7 @@ export async function POST(request) {
             selectedZones,
             totalPrice,
             totalDuration,
+            depositAmount,
             status: 'pending',
             createdAt: new Date(),
             updatedAt: new Date(),

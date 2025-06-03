@@ -32,10 +32,13 @@ export default function AdminPanel() {
     };
 
     useEffect(() => {
+        let intervalId;
         if (isAuthenticated) {
             fetchAvailableDays();
-            fetchAppointments(); // << agrega esto
+            fetchAppointments();
+            intervalId = setInterval(fetchAppointments, 30000);
         }
+        return () => clearInterval(intervalId);
     }, [isAuthenticated]);
 
     const checkAuth = () => {
@@ -44,6 +47,7 @@ export default function AdminPanel() {
         setIsAuthenticated(token);
         if (token) {
             fetchAvailableDays();
+            fetchAppointments();
         }
     };
 
@@ -63,6 +67,7 @@ export default function AdminPanel() {
             if (response.ok) {
                 setIsAuthenticated(true);
                 fetchAvailableDays();
+                fetchAppointments();
             } else {
                 alert('Contraseña incorrecta');
             }

@@ -4,11 +4,14 @@ import { ObjectId } from 'mongodb';
 export async function POST(request) {
     try {
         const body = await request.json();
-        const { data, type } = body;
+        const { data, type, action } = body;
 
         console.log('[WEBHOOK] Recibido:', body);
 
-        if (type !== 'payment.created' && type !== 'payment.updated') {
+        if (
+            type !== 'payment' ||
+            (action !== 'payment.created' && action !== 'payment.updated')
+        ) {
             return new Response('Ignored', { status: 200 });
         }
 
@@ -18,7 +21,7 @@ export async function POST(request) {
             `https://api.mercadopago.com/v1/payments/${paymentId}`,
             {
                 headers: {
-                    Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
+                    Authorization: `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`,
                 },
             }
         );
@@ -39,6 +42,7 @@ export async function POST(request) {
                 {
                     $set: {
                         status: 'confirmed',
+                        paymentStatus: 'paid',
                         paymentId: paymentData.id,
                         updatedAt: new Date(),
                     },
