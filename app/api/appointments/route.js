@@ -13,12 +13,9 @@ export async function POST(request) {
             timeSlot,
         } = body;
 
-        const totalPrice = selectedZones.reduce(
-            (sum, zone) => sum + zone.price,
-            0
-        );
+        const totalPrice = selectedZones.reduce((sum, z) => sum + z.price, 0);
         const totalDuration = selectedZones.reduce(
-            (sum, zone) => sum + zone.duration,
+            (sum, z) => sum + z.duration,
             0
         );
         const depositAmount = totalPrice * 0.5;
@@ -26,7 +23,7 @@ export async function POST(request) {
         const client = await clientPromise;
         const db = client.db('depilation_booking');
 
-        const inserted = await db.collection('appointments').insertOne({
+        const result = await db.collection('appointments').insertOne({
             clientName,
             clientLastName,
             clientPhone,
@@ -50,15 +47,7 @@ export async function POST(request) {
                 },
             ],
             {
-                appointmentId: inserted.insertedId.toString(),
-                clientName,
-                clientLastName,
-                clientPhone,
-                appointmentDate,
-                timeSlot: JSON.stringify(timeSlot),
-                selectedZones: JSON.stringify(selectedZones),
-                totalPrice,
-                totalDuration,
+                appointmentId: result.insertedId.toString(), // METADATA clave para webhook
             }
         );
 
