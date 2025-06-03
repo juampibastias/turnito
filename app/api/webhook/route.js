@@ -1,4 +1,4 @@
-/* import clientPromise from '@/lib/mongodb';
+import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 
 export async function POST(request) {
@@ -66,9 +66,8 @@ export async function POST(request) {
         return new Response('Internal Server Error', { status: 500 });
     }
 }
- */
 
-import clientPromise from '@/lib/mongodb';
+/* import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 
 export async function POST(request) {
@@ -110,4 +109,4 @@ export async function POST(request) {
         console.error('Error en webhook:', error);
         return new Response('Internal Server Error', { status: 500 });
     }
-}
+} */
