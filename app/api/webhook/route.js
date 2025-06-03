@@ -38,7 +38,7 @@ export async function POST(request) {
                 { _id: new ObjectId(appointmentId) },
                 {
                     $set: {
-                        status: 'paid',
+                        status: 'confirmed',
                         paymentId: paymentData.id,
                         updatedAt: new Date(),
                     },
