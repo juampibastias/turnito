@@ -1,8 +1,39 @@
+'use client';
+import { useEffect, useState } from 'react';
+
 export default function Page({ searchParams }) {
     const payment_id = searchParams.payment_id;
     const status = searchParams.status;
 
-    const pagoConfirmado = payment_id && status === 'approved';
+    const [confirming, setConfirming] = useState(false);
+    const [pagoConfirmado, setPagoConfirmado] = useState(
+        payment_id && status === 'approved'
+    );
+
+    useEffect(() => {
+        async function confirmPayment() {
+            if (payment_id && status === 'approved') {
+                setConfirming(true);
+                try {
+                    const res = await fetch('/api/confirm-payment', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ paymentId: payment_id }),
+                    });
+                    if (res.ok) {
+                        setPagoConfirmado(true);
+                    } else {
+                        console.error('Payment confirmation failed');
+                    }
+                } catch (err) {
+                    console.error('Error confirming payment:', err);
+                } finally {
+                    setConfirming(false);
+                }
+            }
+        }
+        confirmPayment();
+    }, [payment_id, status]);
 
     return (
         <div className='min-h-screen px-4 py-12 bg-gradient-to-br from-green-50 to-blue-100'>
