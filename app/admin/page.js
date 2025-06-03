@@ -26,10 +26,25 @@ export default function AdminPanel() {
     }, []);
 
     const fetchAppointments = async () => {
-        const res = await fetch('/api/admin/appointments');
-        const data = await res.json();
-        setAppointments(data);
+        try {
+            const res = await fetch('/api/admin/appointments');
+
+            if (!res.ok) {
+                console.error('Respuesta no OK:', res.status);
+                setAppointments([]);
+                return;
+            }
+
+            const text = await res.text();
+            const data = text ? JSON.parse(text) : [];
+
+            setAppointments(data);
+        } catch (error) {
+            console.error('Error al obtener turnos:', error);
+            setAppointments([]);
+        }
     };
+    
 
     useEffect(() => {
         if (isAuthenticated) {
