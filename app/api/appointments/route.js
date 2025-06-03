@@ -23,7 +23,6 @@ export async function POST(request) {
         );
         const depositAmount = totalPrice * 0.5;
 
-        // 1. Guardar la reserva con status `pending`
         const client = await clientPromise;
         const db = client.db('depilation_booking');
 
@@ -41,7 +40,6 @@ export async function POST(request) {
             updatedAt: new Date(),
         });
 
-        // 2. Crear preferencia con los datos de metadata
         const preference = await createPreference(
             [
                 {

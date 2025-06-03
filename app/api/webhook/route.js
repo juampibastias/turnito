@@ -1,22 +1,19 @@
 import clientPromise from '../../../lib/mongodb';
+import { ObjectId } from 'mongodb';
 
 export async function POST(request) {
     try {
         const body = await request.json();
-
-        // MercadoPago envía un objeto tipo "data" con un ID de pago
         const { data, type } = body;
+
         console.log('[WEBHOOK] Recibido:', body);
 
         if (type !== 'payment.created' && type !== 'payment.updated') {
             return new Response('Ignored', { status: 200 });
         }
 
-        // Buscar detalles del pago si es necesario desde MP (opcional)
         const paymentId = data.id;
 
-        // Suponiendo que mandaste el appointmentId como metadata
-        // Lo mejor es pedir la info de pago directamente a MP con tu token privado
         const mpResponse = await fetch(
             `https://api.mercadopago.com/v1/payments/${paymentId}`,
             {
@@ -26,7 +23,6 @@ export async function POST(request) {
             }
         );
         const paymentData = await mpResponse.json();
-
         const appointmentId = paymentData.metadata?.appointmentId;
 
         if (!appointmentId) {
@@ -37,7 +33,6 @@ export async function POST(request) {
         const client = await clientPromise;
         const db = client.db('depilation_booking');
 
-        // Actualizar el turno a "paid" si el estado es aprobado
         if (paymentData.status === 'approved') {
             await db.collection('appointments').updateOne(
                 { _id: new ObjectId(appointmentId) },
@@ -49,8 +44,19 @@ export async function POST(request) {
                     },
                 }
             );
-
             console.log(`[WEBHOOK] Turno confirmado para ID ${appointmentId}`);
+        } else if (
+            paymentData.status === 'cancelled' ||
+            paymentData.status === 'rejected' ||
+            paymentData.status === 'expired'
+        ) {
+            await db.collection('appointments').deleteOne({
+                _id: new ObjectId(appointmentId),
+                status: 'pending',
+            });
+            console.log(
+                `[WEBHOOK] Turno eliminado por pago fallido (${paymentData.status})`
+            );
         }
 
         return new Response('OK', { status: 200 });
