@@ -44,6 +44,7 @@ export default function AdminPanel() {
         setIsAuthenticated(token);
         if (token) {
             fetchAvailableDays();
+            fetchAppointments();
         }
     };
 
@@ -63,6 +64,7 @@ export default function AdminPanel() {
             if (response.ok) {
                 setIsAuthenticated(true);
                 fetchAvailableDays();
+                fetchAppointments();
             } else {
                 alert('Contraseña incorrecta');
             }
