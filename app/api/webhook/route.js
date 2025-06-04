@@ -5,12 +5,16 @@ export async function POST(request) {
     try {
         const body = await request.json();
         const topic = body?.type || body?.topic;
+        const paymentId = body?.data?.id?.toString(); // Asegura que sea string
 
         console.log('[WEBHOOK] Recibido:', body);
 
-        if (topic === 'payment') {
-            const paymentId = body.data.id;
+        if (!paymentId) {
+            console.warn('[WEBHOOK] No se recibió paymentId');
+            return new Response('Missing paymentId', { status: 400 });
+        }
 
+        if (topic === 'payment') {
             const res = await fetch(
                 `https://api.mercadopago.com/v1/payments/${paymentId}`,
                 {
@@ -21,9 +25,12 @@ export async function POST(request) {
             );
 
             const payment = await res.json();
+            console.log('[WEBHOOK] Pago obtenido:', payment);
+
+            // Intenta capturar con ambas keys posibles
             const appointmentId =
-                payment.metadata?.appointment_id ||
-                payment.metadata?.appointmentId;
+                payment?.metadata?.appointmentId ||
+                payment?.metadata?.appointment_id;
 
             if (!appointmentId) {
                 console.warn('[WEBHOOK] No hay appointmentId en metadata');
