@@ -1,3 +1,4 @@
+// app/api/available-slots/route.js
 import clientPromise from '../../../lib/mongodb';
 import { addMinutes, format, isAfter, isBefore, parseISO } from 'date-fns';
 
@@ -14,7 +15,7 @@ export async function GET(request) {
         const client = await clientPromise;
         const db = client.db('depilation_booking');
 
-        // Buscar el día habilitado por rango de fecha
+        // Buscar el día habilitado
         const dayDate = new Date(date);
         dayDate.setUTCHours(0, 0, 0, 0);
 
@@ -22,7 +23,6 @@ export async function GET(request) {
             date: dayDate,
             isEnabled: true,
         });
-
 
         if (!availableDay) {
             console.log('[API] ❌ No se encontró día habilitado en Mongo');
@@ -33,19 +33,38 @@ export async function GET(request) {
         }
 
         console.log('[API] ✅ Día encontrado:', availableDay.date);
-        console.log('[API] 🕳️ TimeSlots:', availableDay.timeSlots);
 
-        // Buscar turnos existentes
+        // 1. Limpiar reservas expiradas (más de 15 minutos sin confirmar)
+        const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+
+        const expiredResult = await db.collection('appointments').deleteMany({
+            status: 'pending',
+            createdAt: { $lt: fifteenMinutesAgo },
+        });
+
+        if (expiredResult.deletedCount > 0) {
+            console.log(
+                `[API] 🧹 Eliminadas ${expiredResult.deletedCount} reservas expiradas`
+            );
+        }
+
+        // 2. Buscar turnos ocupados (confirmados Y pendientes no expirados)
         const existingAppointments = await db
             .collection('appointments')
             .find({
                 appointmentDate: new Date(date),
-                status: { $in: ['confirmed', 'paid'] },
+                $or: [
+                    { status: 'confirmed' },
+                    {
+                        status: 'pending',
+                        createdAt: { $gte: fifteenMinutesAgo },
+                    },
+                ],
             })
             .toArray();
 
         console.log(
-            '[API] 📋 Appointments encontrados:',
+            '[API] 📋 Appointments ocupados:',
             existingAppointments.length
         );
 
@@ -67,10 +86,7 @@ export async function GET(request) {
 
             let currentTime = slotStart;
 
-            /* console.log(
-                `[API] 🧱 Rango disponible: ${timeSlot.start} → ${timeSlot.end}`
-            ); */
-
+            // Generar slots cada 30 minutos
             while (
                 isBefore(addMinutes(currentTime, duration), slotEnd) ||
                 addMinutes(currentTime, duration).getTime() ===
@@ -79,35 +95,37 @@ export async function GET(request) {
                 const proposedEnd = addMinutes(currentTime, duration);
 
                 console.log(
-                    `🔍 Propuesta: ${format(currentTime, 'HH:mm')} → ${format(
+                    `🔍 Evaluando: ${format(currentTime, 'HH:mm')} → ${format(
                         proposedEnd,
                         'HH:mm'
                     )}`
                 );
 
+                // Verificar conflictos con reservas existentes
                 const hasConflict = existingAppointments.some((appointment) => {
                     const appointmentStart = parseISO(
-                        `${date}T${appointment.timeSlot.start}`
+                        `${date}T${appointment.timeSlot.start}:00`
                     );
                     const appointmentEnd = parseISO(
-                        `${date}T${appointment.timeSlot.end}`
+                        `${date}T${appointment.timeSlot.end}:00`
                     );
 
-                    const conflicto =
-                        (isAfter(currentTime, appointmentStart) &&
-                            isBefore(currentTime, appointmentEnd)) ||
-                        (isAfter(proposedEnd, appointmentStart) &&
-                            isBefore(proposedEnd, appointmentEnd)) ||
-                        (isBefore(currentTime, appointmentStart) &&
-                            isAfter(proposedEnd, appointmentEnd));
+                    // Verificar solapamiento de horarios
+                    const overlaps =
+                        (currentTime >= appointmentStart &&
+                            currentTime < appointmentEnd) ||
+                        (proposedEnd > appointmentStart &&
+                            proposedEnd <= appointmentEnd) ||
+                        (currentTime <= appointmentStart &&
+                            proposedEnd >= appointmentEnd);
 
-                    if (conflicto) {
+                    if (overlaps) {
                         console.log(
-                            `⚠️ Conflicto con turno existente: ${appointment.timeSlot.start} → ${appointment.timeSlot.end}`
+                            `⚠️ Conflicto con turno ${appointment.status}: ${appointment.timeSlot.start} → ${appointment.timeSlot.end}`
                         );
+                        return true;
                     }
-
-                    return conflicto;
+                    return false;
                 });
 
                 if (!hasConflict) {
@@ -120,6 +138,7 @@ export async function GET(request) {
                     });
                 }
 
+                // Avanzar al siguiente slot (cada 30 minutos)
                 currentTime = addMinutes(currentTime, 30);
             }
         }

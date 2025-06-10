@@ -1,3 +1,4 @@
+// app/api/webhook/route.js
 import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 
@@ -5,9 +6,13 @@ export async function POST(request) {
     try {
         const body = await request.json();
         const topic = body?.type || body?.topic;
-        const paymentId = body?.data?.id?.toString(); // Asegura que sea string
+        const paymentId = body?.data?.id?.toString();
 
-        console.log('[WEBHOOK] Recibido:', body);
+        console.log('[WEBHOOK] Recibido:', {
+            topic,
+            paymentId,
+            status: body?.data?.status,
+        });
 
         if (!paymentId) {
             console.warn('[WEBHOOK] No se recibió paymentId');
@@ -15,6 +20,7 @@ export async function POST(request) {
         }
 
         if (topic === 'payment') {
+            // Obtener detalles del pago desde MercadoPago
             const res = await fetch(
                 `https://api.mercadopago.com/v1/payments/${paymentId}`,
                 {
@@ -25,12 +31,13 @@ export async function POST(request) {
             );
 
             const payment = await res.json();
-            console.log('[WEBHOOK] Pago obtenido:', payment);
+            console.log('[WEBHOOK] Pago obtenido:', {
+                id: payment.id,
+                status: payment.status,
+                metadata: payment.metadata,
+            });
 
-            // Intenta capturar con ambas keys posibles
-            const appointmentId =
-                payment?.metadata?.appointmentId ||
-                payment?.metadata?.appointment_id;
+            const appointmentId = payment?.metadata?.appointmentId;
 
             if (!appointmentId) {
                 console.warn('[WEBHOOK] No hay appointmentId en metadata');
@@ -40,38 +47,82 @@ export async function POST(request) {
             const client = await clientPromise;
             const db = client.db('depilation_booking');
 
+            // Manejo según el estado del pago
             if (payment.status === 'approved') {
+                // Pago aprobado - confirmar turno
+                const updateResult = await db
+                    .collection('appointments')
+                    .updateOne(
+                        { _id: new ObjectId(appointmentId) },
+                        {
+                            $set: {
+                                status: 'confirmed',
+                                paymentStatus: 'paid',
+                                paymentId: payment.id,
+                                updatedAt: new Date(),
+                            },
+                        }
+                    );
+
+                if (updateResult.matchedCount > 0) {
+                    console.log(
+                        `[WEBHOOK] ✅ Turno confirmado para ID ${appointmentId}`
+                    );
+                } else {
+                    console.warn(
+                        `[WEBHOOK] ⚠️ No se encontró turno con ID ${appointmentId}`
+                    );
+                }
+            } else if (
+                ['cancelled', 'rejected', 'expired', 'refunded'].includes(
+                    payment.status
+                )
+            ) {
+                // Pago fallido - eliminar reserva temporal
+                const deleteResult = await db
+                    .collection('appointments')
+                    .deleteOne({
+                        _id: new ObjectId(appointmentId),
+                        status: 'pending',
+                    });
+
+                if (deleteResult.deletedCount > 0) {
+                    console.log(
+                        `[WEBHOOK] 🗑️ Turno eliminado (${payment.status}) para ID ${appointmentId}`
+                    );
+                } else {
+                    console.warn(
+                        `[WEBHOOK] ⚠️ No se pudo eliminar turno ${appointmentId} - posiblemente ya confirmado`
+                    );
+                }
+            } else if (payment.status === 'pending') {
+                // Pago pendiente - mantener reserva temporal
                 await db.collection('appointments').updateOne(
                     { _id: new ObjectId(appointmentId) },
                     {
                         $set: {
-                            status: 'confirmed',
-                            updatedAt: new Date(),
+                            paymentStatus: 'pending',
                             paymentId: payment.id,
+                            updatedAt: new Date(),
                         },
                     }
                 );
                 console.log(
-                    `[WEBHOOK] Turno confirmado para ID ${appointmentId}`
+                    `[WEBHOOK] ⏳ Pago pendiente para ID ${appointmentId}`
                 );
-            } else if (
-                ['cancelled', 'rejected', 'expired'].includes(payment.status)
-            ) {
-                await db.collection('appointments').deleteOne({
-                    _id: new ObjectId(appointmentId),
-                    status: 'pending',
-                });
+            } else {
                 console.log(
-                    `[WEBHOOK] Turno eliminado (${payment.status}) para ID ${appointmentId}`
+                    `[WEBHOOK] 📝 Estado no manejado: ${payment.status} para ID ${appointmentId}`
                 );
             }
 
             return new Response('OK', { status: 200 });
         }
 
+        console.log(`[WEBHOOK] 📭 Evento no manejado: ${topic}`);
         return new Response('Evento no manejado', { status: 200 });
     } catch (error) {
-        console.error('Error en webhook:', error);
+        console.error('[WEBHOOK] 💥 Error:', error);
         return new Response('Internal Server Error', { status: 500 });
     }
 }
