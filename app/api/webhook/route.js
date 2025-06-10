@@ -37,7 +37,9 @@ export async function POST(request) {
                 metadata: payment.metadata,
             });
 
-            const appointmentId = payment?.metadata?.appointmentId;
+            const appointmentId =
+                payment?.metadata?.appointmentId ||
+                payment?.metadata?.appointment_id;
 
             if (!appointmentId) {
                 console.warn('[WEBHOOK] No hay appointmentId en metadata');
