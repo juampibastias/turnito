@@ -15,9 +15,8 @@ export async function GET(request) {
         const client = await clientPromise;
         const db = client.db('depilation_booking');
 
-        // Buscar el día habilitado
-        const dayDate = new Date(date);
-        dayDate.setUTCHours(0, 0, 0, 0);
+        // ✅ CORRECCIÓN: Normalizar fecha a UTC correctamente
+        const dayDate = new Date(date + 'T00:00:00.000Z'); // Fuerza UTC
 
         const availableDay = await db.collection('availableDays').findOne({
             date: dayDate,
@@ -48,11 +47,17 @@ export async function GET(request) {
             );
         }
 
-        // 2. Buscar turnos ocupados (confirmados Y pendientes no expirados)
+        // ✅ CORRECCIÓN: Buscar turnos ocupados con rango de fechas
+        const startOfDay = new Date(date + 'T00:00:00.000Z');
+        const endOfDay = new Date(date + 'T23:59:59.999Z');
+
         const existingAppointments = await db
             .collection('appointments')
             .find({
-                appointmentDate: new Date(date),
+                appointmentDate: {
+                    $gte: startOfDay,
+                    $lte: endOfDay,
+                },
                 $or: [
                     { status: 'confirmed' },
                     {

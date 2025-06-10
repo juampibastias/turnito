@@ -23,11 +23,14 @@ export async function POST(request) {
         const client = await clientPromise;
         const db = client.db('depilation_booking');
 
+        // ✅ CORRECCIÓN: Normalizar fecha a UTC correctamente
+        const normalizedDate = new Date(appointmentDate + 'T00:00:00.000Z');
+
         const result = await db.collection('appointments').insertOne({
             clientName,
             clientLastName,
             clientPhone,
-            appointmentDate: new Date(appointmentDate),
+            appointmentDate: normalizedDate, // ✅ Fecha normalizada
             timeSlot,
             selectedZones,
             totalPrice,
