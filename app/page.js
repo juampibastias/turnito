@@ -99,20 +99,23 @@ export default function Home() {
 
         setLoading(true);
         try {
-            const response = await fetch('/api/appointments', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    clientName: clientData.name,
-                    clientLastName: clientData.lastName,
-                    clientPhone: clientData.phone,
-                    selectedZones,
-                    appointmentDate: selectedDate,
-                    timeSlot: selectedSlot,
-                }),
-            });
+            const response = await fetch(
+                `${process.env.NEXTAUTH_URL}/api/appointments`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        clientName: clientData.name,
+                        clientLastName: clientData.lastName,
+                        clientPhone: clientData.phone,
+                        selectedZones,
+                        appointmentDate: selectedDate,
+                        timeSlot: selectedSlot,
+                    }),
+                }
+            );
 
             const data = await response.json();
 
