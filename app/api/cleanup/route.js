@@ -40,5 +40,5 @@ export async function POST(request) {
 
 // Para llamar periódicamente desde el frontend o un cron job
 export async function GET() {
-    return POST(new Request('http://localhost:3000/api/admin/cleanup'));
+    return POST(new Request(`${process.env.NEXTAUTH_URL}/api/admin/cleanup`));
 }
