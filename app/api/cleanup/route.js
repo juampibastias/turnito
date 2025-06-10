@@ -1,5 +1,5 @@
 // app/api/admin/cleanup/route.js
-import clientPromise from '../../../../lib/mongodb';
+import clientPromise from '../../../lib/mongodb';
 
 export async function POST(request) {
     try {
