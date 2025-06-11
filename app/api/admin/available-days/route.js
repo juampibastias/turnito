@@ -2,6 +2,7 @@ import clientPromise from '../../../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 
 export async function GET() {
+
     const client = await clientPromise;
     const db = client.db('depilation_booking');
 
@@ -28,8 +29,11 @@ export async function POST(request) {
     try {
         const { date, timeSlots, zones } = await request.json();
 
+        // ✅ CORRECCIÓN: Normalizar fecha a UTC correctamente
+        const normalizedDate = new Date(date + 'T00:00:00.000Z');
+
         const availableDay = {
-            date: new Date(date),
+            date: normalizedDate, // ✅ Fecha normalizada UTC
             isEnabled: true,
             timeSlots: timeSlots.map((slot) => ({
                 ...slot,
