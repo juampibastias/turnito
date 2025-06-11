@@ -20,7 +20,7 @@ export async function POST(request) {
             );
         }
 
-        // Crear el token JWT
+        // Crear el token JWT usando NEXTAUTH_SECRET (como tenías originalmente)
         const token = jwt.sign({ role: 'admin' }, process.env.NEXTAUTH_SECRET, {
             expiresIn: '24h',
         });
