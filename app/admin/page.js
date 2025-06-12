@@ -21,9 +21,168 @@ export default function AdminPanel() {
     const [appointments, setAppointments] = useState([]);
     const [loading, setLoading] = useState(false);
 
+    // Agregar al archivo app/admin/page.js - NUEVA SECCIÓN DESPUÉS DE LA TABLA DE TURNOS
+
+    // Agregar estos estados al componente:
+    const [cancellingId, setCancellingId] = useState(null);
+    const [cancelReason, setCancelReason] = useState('');
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [selectedAppointment, setSelectedAppointment] = useState(null);
+
     useEffect(() => {
         checkAuth();
     }, []);
+
+    // Función para verificar si se puede cancelar
+    const canCancelAppointment = (appointment) => {
+        if (appointment.status !== 'confirmed') return false;
+
+        const now = new Date();
+        const appointmentDate = new Date(appointment.appointmentDate);
+        const [hours, minutes] = appointment.timeSlot.start
+            .split(':')
+            .map(Number);
+        appointmentDate.setHours(hours, minutes, 0, 0);
+
+        const hoursUntil = Math.floor(
+            (appointmentDate - now) / (1000 * 60 * 60)
+        );
+        return hoursUntil >= 36;
+    };
+
+    // Función para obtener horas restantes
+    const getHoursUntilAppointment = (appointment) => {
+        const now = new Date();
+        const appointmentDate = new Date(appointment.appointmentDate);
+        const [hours, minutes] = appointment.timeSlot.start
+            .split(':')
+            .map(Number);
+        appointmentDate.setHours(hours, minutes, 0, 0);
+
+        return Math.floor((appointmentDate - now) / (1000 * 60 * 60));
+    };
+
+    // Función para manejar cancelación
+    const handleCancelAppointment = async () => {
+        if (!selectedAppointment || !cancelReason.trim()) {
+            alert('Por favor ingresa un motivo de cancelación');
+            return;
+        }
+
+        setCancellingId(selectedAppointment._id);
+
+        try {
+            const response = await fetch(
+                `/api/admin/appointments/${selectedAppointment._id}/cancel`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        reason: cancelReason.trim(),
+                    }),
+                }
+            );
+
+            const data = await response.json();
+
+            if (response.ok) {
+                alert(
+                    `✅ Turno cancelado exitosamente\n\nSe canceló con ${data.hoursInAdvance} horas de anticipación.\nEl cliente es elegible para reembolso.`
+                );
+
+                // Actualizar la lista de appointments
+                await fetchAppointments();
+
+                // Cerrar modal
+                setShowCancelModal(false);
+                setSelectedAppointment(null);
+                setCancelReason('');
+            } else {
+                alert(`❌ Error: ${data.message}`);
+            }
+        } catch (error) {
+            console.error('Error al cancelar:', error);
+            alert('Error al cancelar el turno');
+        } finally {
+            setCancellingId(null);
+        }
+    };
+
+    // Modal de confirmación de cancelación
+const CancelModal = () => {
+    if (!showCancelModal || !selectedAppointment) return null;
+
+    const hoursUntil = getHoursUntilAppointment(selectedAppointment);
+    const canCancel = hoursUntil >= 36;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="w-full max-w-md p-6 mx-4 bg-white rounded-lg">
+                <h3 className="mb-4 text-lg font-semibold">
+                    Cancelar Turno
+                </h3>
+                
+                <div className="p-3 mb-4 rounded bg-gray-50">
+                    <p><strong>Cliente:</strong> {selectedAppointment.clientName} {selectedAppointment.clientLastName}</p>
+                    <p><strong>Fecha:</strong> {new Date(selectedAppointment.appointmentDate).toLocaleDateString('es-AR')}</p>
+                    <p><strong>Horario:</strong> {selectedAppointment.timeSlot.start} - {selectedAppointment.timeSlot.end}</p>
+                    <p><strong>Zonas:</strong> {selectedAppointment.selectedZones.map(z => z.name).join(', ')}</p>
+                </div>
+
+                <div className="mb-4">
+                    <div className={`p-3 rounded ${canCancel ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                        <p className={`font-medium ${canCancel ? 'text-green-800' : 'text-red-800'}`}>
+                            {canCancel ? 
+                                `✅ Se puede cancelar (${hoursUntil} horas de anticipación)` :
+                                `❌ No se puede cancelar (solo ${hoursUntil} horas de anticipación, mínimo 36h)`
+                            }
+                        </p>
+                    </div>
+                </div>
+
+                {canCancel && (
+                    <div className="mb-4">
+                        <label className="block mb-2 text-sm font-medium text-gray-700">
+                            Motivo de cancelación *
+                        </label>
+                        <textarea
+                            value={cancelReason}
+                            onChange={(e) => setCancelReason(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                            rows="3"
+                            placeholder="Ej: Cliente solicitó cancelación, cambio de planes, etc."
+                            required
+                        />
+                    </div>
+                )}
+
+                <div className="flex space-x-3">
+                    <button
+                        onClick={() => {
+                            setShowCancelModal(false);
+                            setSelectedAppointment(null);
+                            setCancelReason('');
+                        }}
+                        className="flex-1 px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300"
+                    >
+                        Cerrar
+                    </button>
+                    {canCancel && (
+                        <button
+                            onClick={handleCancelAppointment}
+                            disabled={cancellingId || !cancelReason.trim()}
+                            className="flex-1 px-4 py-2 text-white bg-red-600 rounded hover:bg-red-700 disabled:bg-gray-400"
+                        >
+                            {cancellingId ? 'Cancelando...' : 'Confirmar Cancelación'}
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
     const fetchAppointments = async () => {
         try {
@@ -542,39 +701,135 @@ export default function AdminPanel() {
                                 <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
                                     Estado
                                 </th>
+                                <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                    Acciones
+                                </th>
                             </tr>
                         </thead>
                         <tbody className='bg-white divide-y divide-gray-200'>
-                            {appointments.map((a, i) => (
-                                <tr key={i}>
-                                    <td className='px-6 py-4 text-sm text-gray-900'>
-                                        {new Date(
-                                            a.appointmentDate
-                                        ).toLocaleDateString('es-AR')}
-                                    </td>
-                                    <td className='px-6 py-4 text-sm text-gray-900'>
-                                        {a.timeSlot.start} - {a.timeSlot.end}
-                                    </td>
-                                    <td className='px-6 py-4 text-sm text-gray-900'>
-                                        {a.clientName} {a.clientLastName}
-                                    </td>
-                                    <td className='px-6 py-4 text-sm text-gray-900'>
-                                        {a.clientPhone}
-                                    </td>
-                                    <td className='px-6 py-4 text-sm text-gray-900'>
-                                        {a.selectedZones
-                                            .map((z) => z.name)
-                                            .join(', ')}
-                                    </td>
-                                    <td className='px-6 py-4 text-sm text-gray-900'>
-                                        {a.status}
-                                    </td>
-                                </tr>
-                            ))}
+                            {appointments.map((appointment, i) => {
+                                const canCancel =
+                                    canCancelAppointment(appointment);
+                                const hoursUntil =
+                                    getHoursUntilAppointment(appointment);
+
+                                return (
+                                    <tr
+                                        key={i}
+                                        className={
+                                            appointment.status === 'cancelled'
+                                                ? 'opacity-50'
+                                                : ''
+                                        }
+                                    >
+                                        <td className='px-6 py-4 text-sm text-gray-900'>
+                                            {new Date(
+                                                appointment.appointmentDate
+                                            ).toLocaleDateString('es-AR')}
+                                        </td>
+                                        <td className='px-6 py-4 text-sm text-gray-900'>
+                                            {appointment.timeSlot.start} -{' '}
+                                            {appointment.timeSlot.end}
+                                        </td>
+                                        <td className='px-6 py-4 text-sm text-gray-900'>
+                                            {appointment.clientName}{' '}
+                                            {appointment.clientLastName}
+                                        </td>
+                                        <td className='px-6 py-4 text-sm text-gray-900'>
+                                            {appointment.clientPhone}
+                                        </td>
+                                        <td className='px-6 py-4 text-sm text-gray-900'>
+                                            {appointment.selectedZones
+                                                .map((z) => z.name)
+                                                .join(', ')}
+                                        </td>
+                                        <td className='px-6 py-4 text-sm text-gray-900'>
+                                            <span
+                                                className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                                    appointment.status ===
+                                                    'confirmed'
+                                                        ? 'bg-green-100 text-green-800'
+                                                        : appointment.status ===
+                                                          'pending'
+                                                        ? 'bg-yellow-100 text-yellow-800'
+                                                        : appointment.status ===
+                                                          'cancelled'
+                                                        ? 'bg-red-100 text-red-800'
+                                                        : 'bg-gray-100 text-gray-800'
+                                                }`}
+                                            >
+                                                {appointment.status}
+                                            </span>
+                                        </td>
+                                        <td className='px-6 py-4 text-sm text-gray-900'>
+                                            {appointment.status ===
+                                                'confirmed' && (
+                                                <div className='flex flex-col space-y-1'>
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedAppointment(
+                                                                appointment
+                                                            );
+                                                            setShowCancelModal(
+                                                                true
+                                                            );
+                                                        }}
+                                                        className={`px-3 py-1 text-xs rounded font-medium ${
+                                                            canCancel
+                                                                ? 'bg-red-100 text-red-800 hover:bg-red-200 border border-red-200'
+                                                                : 'bg-gray-100 text-gray-500 cursor-not-allowed'
+                                                        }`}
+                                                        disabled={!canCancel}
+                                                    >
+                                                        {canCancel
+                                                            ? 'Cancelar Turno'
+                                                            : 'No cancelable'}
+                                                    </button>
+                                                    <span className='text-xs text-gray-500'>
+                                                        {hoursUntil >= 0
+                                                            ? `${hoursUntil}h restantes`
+                                                            : 'Turno vencido'}
+                                                    </span>
+                                                    {appointment.depositAmount && (
+                                                        <span className='text-xs font-medium text-green-600'>
+                                                            Seña: $
+                                                            {
+                                                                appointment.depositAmount
+                                                            }
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {appointment.status ===
+                                                'cancelled' && (
+                                                <div className='text-xs'>
+                                                    <span className='font-medium text-red-600'>
+                                                        Cancelado
+                                                    </span>
+                                                    {appointment.cancellationReason && (
+                                                        <p className='mt-1 text-gray-500'>
+                                                            {
+                                                                appointment.cancellationReason
+                                                            }
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {appointment.status ===
+                                                'pending' && (
+                                                <span className='text-xs text-yellow-600'>
+                                                    Esperando pago
+                                                </span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
             </div>
+            {showCancelModal && <CancelModal />}
         </div>
     );
 }

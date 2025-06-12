@@ -227,20 +227,53 @@ export default function SuccessPage() {
                         </p>
 
                         <div className='space-y-4'>
-                            <a
-                                href='/'
-                                className='inline-block w-full px-8 py-3 font-semibold text-white rounded-lg bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700'
-                            >
-                                Volver al inicio
-                            </a>
-                            <a
-                                href='https://wa.me/2634631033'
-                                target='_blank'
-                                rel='noopener noreferrer'
-                                className='inline-block w-full px-8 py-3 font-semibold text-white bg-green-500 rounded-lg hover:bg-green-600'
-                            >
-                                Contactar por WhatsApp
-                            </a>
+                            <div className='p-4 border border-blue-200 rounded-lg bg-blue-50'>
+                                <p className='text-sm text-blue-800'>
+                                    <strong>✅ Pago confirmado:</strong> Tu
+                                    turno ha sido reservado exitosamente.
+                                </p>
+                            </div>
+
+                            <div className='p-4 border rounded-lg border-amber-200 bg-amber-50'>
+                                <p className='text-sm text-amber-800'>
+                                    <strong>📞 Confirmación:</strong> Recibirás
+                                    un WhatsApp de confirmación. El resto del
+                                    pago se realiza el día del turno.
+                                </p>
+                            </div>
+
+                            {/* NUEVA SECCIÓN: Política de cancelación */}
+                            <div className='p-4 border border-red-200 rounded-lg bg-red-50'>
+                                <p className='text-sm text-red-800'>
+                                    <strong>
+                                        ❗ Importante - Cancelaciones:
+                                    </strong>{' '}
+                                    Las cancelaciones deben realizarse con{' '}
+                                    <strong>
+                                        mínimo 36 horas de anticipación
+                                    </strong>
+                                    para ser elegible al reembolso de la seña.
+                                    Cancelaciones con menos de 36 horas no son
+                                    reembolsables.
+                                </p>
+                            </div>
+
+                            <div className='space-y-3'>
+                                <a
+                                    href='/'
+                                    className='inline-block w-full px-8 py-3 font-semibold text-white rounded-lg bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700'
+                                >
+                                    Volver al inicio
+                                </a>
+                                <a
+                                    href='https://wa.me/2634631033'
+                                    target='_blank'
+                                    rel='noopener noreferrer'
+                                    className='inline-block w-full px-8 py-3 font-semibold text-white bg-green-500 rounded-lg hover:bg-green-600'
+                                >
+                                    Contactar por WhatsApp
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -1,6 +1,6 @@
-// app/api/available-slots/route.js - VERSIÓN CORREGIDA
+// app/api/available-slots/route.js - VERSIÓN CORREGIDA para respetar horarios
 import clientPromise from '../../../lib/mongodb';
-import { addMinutes, format, parseISO } from 'date-fns';
+import { addMinutes, format } from 'date-fns';
 
 export async function GET(request) {
     const { searchParams } = new URL(request.url);
@@ -22,20 +22,17 @@ export async function GET(request) {
         const client = await clientPromise;
         const db = client.db('depilation_booking');
 
-        // ✅ CORRECCIÓN 1: Normalización de fecha más robusta
+        // ✅ NORMALIZACIÓN DE FECHA
         let normalizedDate;
         try {
-            // Si viene en formato ISO (YYYY-MM-DD), parsearlo correctamente
             if (dateParam.includes('T')) {
                 normalizedDate = new Date(
                     dateParam.split('T')[0] + 'T00:00:00.000Z'
                 );
             } else {
-                // Si viene solo la fecha (YYYY-MM-DD)
                 normalizedDate = new Date(dateParam + 'T00:00:00.000Z');
             }
 
-            // Verificar que la fecha es válida
             if (isNaN(normalizedDate.getTime())) {
                 throw new Error('Fecha inválida');
             }
@@ -52,17 +49,14 @@ export async function GET(request) {
             );
         }
 
-        // ✅ CORRECCIÓN 2: Buscar día disponible con múltiples estrategias
-        let availableDay = null;
-
-        // Estrategia 1: Búsqueda exacta por fecha normalizada
-        availableDay = await db.collection('availableDays').findOne({
+        // ✅ BUSCAR DÍA DISPONIBLE
+        let availableDay = await db.collection('availableDays').findOne({
             date: normalizedDate,
             isEnabled: true,
         });
 
-        // Estrategia 2: Si falla, buscar por rango de fechas del mismo día
         if (!availableDay) {
+            // Buscar por rango si no encuentra exacto
             const startOfDay = new Date(normalizedDate);
             startOfDay.setUTCHours(0, 0, 0, 0);
 
@@ -87,8 +81,9 @@ export async function GET(request) {
         }
 
         console.log('[API] ✅ Día encontrado:', availableDay.date);
+        console.log('[API] 📋 TimeSlots configurados:', availableDay.timeSlots);
 
-        // ✅ CORRECCIÓN 3: Limpieza de reservas expiradas MÁS estricta
+        // ✅ LIMPIAR RESERVAS EXPIRADAS
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
         const expiredResult = await db.collection('appointments').deleteMany({
@@ -102,17 +97,12 @@ export async function GET(request) {
             );
         }
 
-        // ✅ CORRECCIÓN 4: Consulta MÁS estricta de turnos ocupados
+        // ✅ BUSCAR APPOINTMENTS OCUPADOS
         const startOfRequestedDay = new Date(normalizedDate);
         startOfRequestedDay.setUTCHours(0, 0, 0, 0);
 
         const endOfRequestedDay = new Date(normalizedDate);
         endOfRequestedDay.setUTCHours(23, 59, 59, 999);
-
-        console.log('[API] 🔍 Buscando appointments entre:', {
-            start: startOfRequestedDay.toISOString(),
-            end: endOfRequestedDay.toISOString(),
-        });
 
         const existingAppointments = await db
             .collection('appointments')
@@ -121,13 +111,12 @@ export async function GET(request) {
                     $gte: startOfRequestedDay,
                     $lte: endOfRequestedDay,
                 },
-                // ✅ CRÍTICO: Solo considerar turnos válidos
                 $or: [
-                    { status: 'confirmed' }, // Confirmados = BLOQUEADOS
+                    { status: 'confirmed' },
                     {
                         status: 'pending',
                         createdAt: { $gte: fifteenMinutesAgo },
-                    }, // Pendientes recientes = BLOQUEADOS
+                    },
                 ],
             })
             .toArray();
@@ -147,29 +136,58 @@ export async function GET(request) {
 
         const availableSlots = [];
 
+        // ✅ PROCESAR CADA TIMESLOT CONFIGURADO
         for (const timeSlot of availableDay.timeSlots) {
-            if (timeSlot.isAvailable === false) continue;
+            if (timeSlot.isAvailable === false) {
+                console.log(
+                    `[API] ⏭️ Saltando timeSlot deshabilitado: ${timeSlot.start}-${timeSlot.end}`
+                );
+                continue;
+            }
 
+            console.log(
+                `[API] 🔄 Procesando timeSlot: ${timeSlot.start} - ${timeSlot.end}`
+            );
+
+            // ✅ CORRECCIÓN CRÍTICA: Parsear horarios correctamente
             const [startHour, startMinute] = timeSlot.start
                 .split(':')
                 .map(Number);
             const [endHour, endMinute] = timeSlot.end.split(':').map(Number);
 
-            // ✅ CORRECCIÓN 5: Crear fechas con la fecha correcta del día solicitado
-            const slotStart = new Date(normalizedDate);
-            slotStart.setUTCHours(startHour, startMinute, 0, 0);
+            console.log(
+                `[API] 📊 Horario parseado: ${startHour}:${startMinute} - ${endHour}:${endMinute}`
+            );
 
-            const slotEnd = new Date(normalizedDate);
-            slotEnd.setUTCHours(endHour, endMinute, 0, 0);
+            // ✅ CREAR FECHA/HORA DE INICIO Y FIN RESPETANDO EL TIMESLOT
+            const slotStartTime = new Date(normalizedDate);
+            slotStartTime.setUTCHours(startHour, startMinute, 0, 0);
 
-            let currentTime = new Date(slotStart);
+            const slotEndTime = new Date(normalizedDate);
+            slotEndTime.setUTCHours(endHour, endMinute, 0, 0);
 
-            // Generar slots cada 30 minutos
-            while (currentTime < slotEnd) {
+            console.log(
+                `[API] ⏰ Rango de timeSlot: ${format(
+                    slotStartTime,
+                    'HH:mm'
+                )} - ${format(slotEndTime, 'HH:mm')}`
+            );
+
+            // ✅ INICIALIZAR EN EL HORARIO DE INICIO DEL TIMESLOT (NO ANTES)
+            let currentTime = new Date(slotStartTime);
+
+            // ✅ GENERAR SLOTS CADA 30 MINUTOS DENTRO DEL RANGO
+            while (currentTime < slotEndTime) {
                 const proposedEnd = addMinutes(currentTime, duration);
 
-                // Verificar que el slot propuesto cabe en el timeSlot
-                if (proposedEnd > slotEnd) {
+                // ✅ VERIFICAR QUE EL SLOT PROPUESTO CABE COMPLETAMENTE EN EL TIMESLOT
+                if (proposedEnd > slotEndTime) {
+                    console.log(
+                        `[API] 🚫 Slot ${format(currentTime, 'HH:mm')}-${format(
+                            proposedEnd,
+                            'HH:mm'
+                        )} excede límite del timeSlot`
+                    );
                     break;
                 }
 
@@ -180,7 +198,7 @@ export async function GET(request) {
                     )} → ${format(proposedEnd, 'HH:mm')}`
                 );
 
-                // ✅ CORRECCIÓN 6: Verificación de conflictos MÁS estricta
+                // ✅ VERIFICAR CONFLICTOS CON APPOINTMENTS EXISTENTES
                 const hasConflict = existingAppointments.some((appointment) => {
                     if (
                         !appointment.timeSlot ||
@@ -194,7 +212,7 @@ export async function GET(request) {
                         return false;
                     }
 
-                    // Crear fechas del appointment usando la fecha del appointment
+                    // Crear fechas del appointment
                     const appointmentDate = new Date(
                         appointment.appointmentDate
                     );
@@ -215,8 +233,7 @@ export async function GET(request) {
                         .map(Number);
                     appointmentEnd.setUTCHours(aptEndHour, aptEndMin, 0, 0);
 
-                    // ✅ LÓGICA DE SOLAPAMIENTO CORREGIDA
-                    // Dos rangos se solapan si: start1 < end2 && start2 < end1
+                    // LÓGICA DE SOLAPAMIENTO: start1 < end2 && start2 < end1
                     const overlaps =
                         currentTime < appointmentEnd &&
                         appointmentStart < proposedEnd;
@@ -232,9 +249,6 @@ export async function GET(request) {
                         console.log(
                             `   Appointment (${appointment.status}): ${appointment.timeSlot.start} - ${appointment.timeSlot.end}`
                         );
-                        console.log(
-                            `   Cliente: ${appointment.clientName} ${appointment.clientLastName}`
-                        );
                         return true;
                     }
                     return false;
@@ -246,16 +260,24 @@ export async function GET(request) {
                         start: format(currentTime, 'HH:mm'),
                         end: format(proposedEnd, 'HH:mm'),
                     });
+                } else {
+                    console.log('❌ Slot con conflicto, no agregado');
                 }
 
-                // Avanzar al siguiente slot (cada 30 minutos)
+                // ✅ AVANZAR AL SIGUIENTE SLOT (CADA 30 MINUTOS)
                 currentTime = addMinutes(currentTime, 30);
             }
         }
 
         console.log(
-            `[API] ⏰ Total slots disponibles: ${availableSlots.length}`
+            `[API] ⏰ Total slots disponibles generados: ${availableSlots.length}`
         );
+        console.log(
+            `[API] 📋 Slots: ${availableSlots
+                .map((s) => `${s.start}-${s.end}`)
+                .join(', ')}`
+        );
+
         return Response.json(availableSlots);
     } catch (error) {
         console.error('🛑 Error en available-slots:', error);
