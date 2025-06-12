@@ -1,4 +1,4 @@
-// app/api/available-slots/route.js
+// app/api/available-slots/route.js - CORREGIDO
 import clientPromise from '../../../lib/mongodb';
 import { addMinutes, format, isAfter, isBefore, parseISO } from 'date-fns';
 
@@ -15,16 +15,68 @@ export async function GET(request) {
         const client = await clientPromise;
         const db = client.db('depilation_booking');
 
-        // ✅ CORRECCIÓN: Normalizar fecha a UTC correctamente
-        const dayDate = new Date(date + 'T00:00:00.000Z'); // Fuerza UTC
+        // ✅ LIMPIAR y normalizar la fecha
+        const cleanDate = date.split('T')[0]; // Extraer solo "2025-06-25"
+        const dayDate = new Date(cleanDate + 'T00:00:00.000Z');
+        console.log('[API] 🔍 Fecha limpia:', cleanDate);
+        console.log('[API] 🔍 Buscando fecha normalizada:', dayDate);
 
-        const availableDay = await db.collection('availableDays').findOne({
+        // Estrategia 1: Buscar por fecha exacta
+        let availableDay = await db.collection('availableDays').findOne({
             date: dayDate,
             isEnabled: true,
         });
 
         if (!availableDay) {
-            console.log('[API] ❌ No se encontró día habilitado en Mongo');
+            console.log('[API] ❌ Estrategia 1 falló - Probando estrategia 2');
+
+            // Estrategia 2: Buscar por rango de fechas
+            const startOfDay = new Date(cleanDate + 'T00:00:00.000Z');
+            const endOfDay = new Date(cleanDate + 'T23:59:59.999Z');
+
+            availableDay = await db.collection('availableDays').findOne({
+                date: {
+                    $gte: startOfDay,
+                    $lte: endOfDay,
+                },
+                isEnabled: true,
+            });
+        }
+
+        if (!availableDay) {
+            console.log('[API] ❌ Estrategia 2 falló - Probando estrategia 3');
+
+            // Estrategia 3: Buscar sin normalización UTC
+            const simpleDateStr = cleanDate; // "2025-06-25"
+            availableDay = await db.collection('availableDays').findOne({
+                $expr: {
+                    $eq: [
+                        {
+                            $dateToString: {
+                                format: '%Y-%m-%d',
+                                date: '$date',
+                            },
+                        },
+                        simpleDateStr,
+                    ],
+                },
+                isEnabled: true,
+            });
+        }
+
+        if (!availableDay) {
+            console.log('[API] ❌ TODAS las estrategias fallaron');
+
+            // Debug: Mostrar TODOS los días disponibles
+            const allDays = await db
+                .collection('availableDays')
+                .find({})
+                .toArray();
+            console.log('[API] 🔍 Días en la base de datos:');
+            allDays.forEach((day) => {
+                console.log(`  - ${day.date} (enabled: ${day.isEnabled})`);
+            });
+
             return Response.json(
                 { message: 'Day not available' },
                 { status: 404 }
@@ -47,9 +99,9 @@ export async function GET(request) {
             );
         }
 
-        // ✅ CORRECCIÓN: Buscar turnos ocupados con rango de fechas
-        const startOfDay = new Date(date + 'T00:00:00.000Z');
-        const endOfDay = new Date(date + 'T23:59:59.999Z');
+        // 2. Buscar turnos ocupados con rango de fechas
+        const startOfDay = new Date(cleanDate + 'T00:00:00.000Z');
+        const endOfDay = new Date(cleanDate + 'T23:59:59.999Z');
 
         const existingAppointments = await db
             .collection('appointments')
@@ -83,10 +135,10 @@ export async function GET(request) {
                 .map(Number);
             const [endHour, endMinute] = timeSlot.end.split(':').map(Number);
 
-            const slotStart = new Date(date);
+            const slotStart = new Date(cleanDate);
             slotStart.setHours(startHour, startMinute, 0, 0);
 
-            const slotEnd = new Date(date);
+            const slotEnd = new Date(cleanDate);
             slotEnd.setHours(endHour, endMinute, 0, 0);
 
             let currentTime = slotStart;
@@ -109,10 +161,10 @@ export async function GET(request) {
                 // Verificar conflictos con reservas existentes
                 const hasConflict = existingAppointments.some((appointment) => {
                     const appointmentStart = parseISO(
-                        `${date}T${appointment.timeSlot.start}:00`
+                        `${cleanDate}T${appointment.timeSlot.start}:00`
                     );
                     const appointmentEnd = parseISO(
-                        `${date}T${appointment.timeSlot.end}:00`
+                        `${cleanDate}T${appointment.timeSlot.end}:00`
                     );
 
                     // Verificar solapamiento de horarios
