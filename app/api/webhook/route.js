@@ -1,6 +1,7 @@
-// app/api/webhook/route.js
+// app/api/webhook/route.js - VERSIÓN CON WHATSAPP
 import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { sendConfirmationWhatsApp } from '@/lib/whatsappService';
 
 export async function POST(request) {
     try {
@@ -61,6 +62,7 @@ export async function POST(request) {
                                 status: 'confirmed',
                                 paymentStatus: 'paid',
                                 paymentId: payment.id,
+                                depositAmount: payment.transaction_amount,
                                 updatedAt: new Date(),
                             },
                         }
@@ -70,6 +72,61 @@ export async function POST(request) {
                     console.log(
                         `[WEBHOOK] ✅ Turno confirmado para ID ${appointmentId}`
                     );
+
+                    // 🎯 ENVIAR WHATSAPP AUTOMÁTICAMENTE
+                    try {
+                        // Obtener el appointment completo para el WhatsApp
+                        const appointment = await db
+                            .collection('appointments')
+                            .findOne({
+                                _id: new ObjectId(appointmentId),
+                            });
+
+                        if (appointment) {
+                            console.log(
+                                `[WEBHOOK] 📱 Enviando WhatsApp a ${appointment.clientPhone}...`
+                            );
+
+                            const whatsappResult =
+                                await sendConfirmationWhatsApp(appointment);
+
+                            // Actualizar el appointment con el resultado del WhatsApp
+                            await db.collection('appointments').updateOne(
+                                { _id: new ObjectId(appointmentId) },
+                                {
+                                    $set: {
+                                        whatsappSent: whatsappResult.success,
+                                        whatsappSentAt: new Date(),
+                                        whatsappMethod: whatsappResult.method,
+                                        whatsappError: whatsappResult.success
+                                            ? null
+                                            : whatsappResult.message,
+                                    },
+                                }
+                            );
+
+                            if (whatsappResult.success) {
+                                console.log(
+                                    `[WEBHOOK] ✅ WhatsApp enviado exitosamente via ${whatsappResult.method}`
+                                );
+                            } else {
+                                console.log(
+                                    `[WEBHOOK] ⚠️ WhatsApp no enviado automáticamente:`,
+                                    whatsappResult
+                                );
+                                console.log(
+                                    `[WEBHOOK] 📝 Mensaje para envío manual a ${appointment.clientPhone}:`
+                                );
+                                console.log(whatsappResult.messageContent);
+                            }
+                        }
+                    } catch (whatsappError) {
+                        console.error(
+                            '[WEBHOOK] Error enviando WhatsApp:',
+                            whatsappError
+                        );
+                        // No fallar el webhook por error de WhatsApp
+                    }
                 } else {
                     console.warn(
                         `[WEBHOOK] ⚠️ No se encontró turno con ID ${appointmentId}`
