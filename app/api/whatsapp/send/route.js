@@ -1,11 +1,15 @@
-// app/api/whatsapp/send/route.js
+// app/api/whatsapp/send/route.js - VERSIÓN ACTUALIZADA
 import { sendConfirmationWhatsApp } from '../../../../lib/whatsappService';
 import clientPromise from '../../../../lib/mongodb';
 import { ObjectId } from 'mongodb';
 
 export async function POST(request) {
     try {
-        const { appointmentId } = await request.json();
+        const {
+            appointmentId,
+            manualSend = false,
+            message = null,
+        } = await request.json();
 
         if (!appointmentId) {
             return Response.json(
@@ -39,8 +43,19 @@ export async function POST(request) {
             );
         }
 
-        // Enviar WhatsApp
-        const result = await sendConfirmationWhatsApp(appointment);
+        let result;
+
+        if (manualSend) {
+            // Para envío manual, solo actualizar la base de datos
+            result = {
+                success: true,
+                method: 'Manual',
+                message: 'Marcado como enviado manualmente',
+            };
+        } else {
+            // Enviar WhatsApp automáticamente
+            result = await sendConfirmationWhatsApp(appointment);
+        }
 
         // Guardar el registro del envío en la base de datos
         await db.collection('appointments').updateOne(
@@ -49,8 +64,9 @@ export async function POST(request) {
                 $set: {
                     whatsappSent: result.success,
                     whatsappSentAt: new Date(),
-                    whatsappMethod: result.method,
+                    whatsappMethod: result.method || 'Manual',
                     whatsappError: result.success ? null : result.message,
+                    whatsappMessage: message || null,
                     updatedAt: new Date(),
                 },
             }
@@ -58,17 +74,21 @@ export async function POST(request) {
 
         if (result.success) {
             console.log(
-                `✅ WhatsApp enviado exitosamente via ${result.method} para appointment ${appointmentId}`
+                `✅ WhatsApp ${
+                    manualSend ? 'marcado como enviado' : 'enviado'
+                } via ${result.method} para appointment ${appointmentId}`
             );
             return Response.json({
                 success: true,
-                message: 'WhatsApp enviado exitosamente',
+                message: manualSend
+                    ? 'Marcado como enviado manualmente'
+                    : 'WhatsApp enviado exitosamente',
                 method: result.method,
                 appointmentId,
             });
         } else {
             console.log(
-                `📝 WhatsApp no enviado automáticamente para appointment ${appointmentId}:`,
+                `📝 WhatsApp no enviado para appointment ${appointmentId}:`,
                 result
             );
             return Response.json(

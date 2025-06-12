@@ -32,6 +32,157 @@ export default function AdminPanel() {
     const [lastRefresh, setLastRefresh] = useState(new Date());
     const [autoRefresh, setAutoRefresh] = useState(false);
 
+    // Agregar estos estados al inicio del componente AdminPanel, después de los estados existentes:
+
+    // Estados adicionales para WhatsApp
+    const [selectedAppointments, setSelectedAppointments] = useState(new Set());
+    const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+    const [whatsappMessage, setWhatsappMessage] = useState('');
+    const [sendingWhatsApp, setSendingWhatsApp] = useState(false);
+
+    // Funciones para manejar WhatsApp manual
+    const generateDefaultMessage = (appointment) => {
+        const date = format(
+            new Date(appointment.appointmentDate),
+            "EEEE d 'de' MMMM 'de' yyyy",
+            { locale: es }
+        );
+        const zones = appointment.selectedZones.map((z) => z.name).join(', ');
+
+        return `🎉 *¡Tu turno está confirmado!*
+
+👤 *Cliente:* ${appointment.clientName} ${appointment.clientLastName}
+📅 *Fecha:* ${date}
+🕐 *Horario:* ${appointment.timeSlot.start} - ${appointment.timeSlot.end}
+💆‍♀️ *Zonas:* ${zones}
+💰 *Total:* $${appointment.totalPrice}
+✅ *Seña pagada:* $${appointment.depositAmount || appointment.totalPrice * 0.5}
+
+📝 *Detalles importantes:*
+• Llega 5-10 minutos antes de tu turno
+• El resto del pago se realiza el día del turno
+• Para cancelaciones, mínimo 36hs de anticipación
+
+📞 Si tienes dudas, contáctanos por este mismo WhatsApp.
+
+¡Te esperamos! 💕`;
+    };
+
+    const toggleAppointmentSelection = (appointmentId) => {
+        setSelectedAppointments((prev) => {
+            const newSet = new Set(prev);
+            if (newSet.has(appointmentId)) {
+                newSet.delete(appointmentId);
+            } else {
+                newSet.add(appointmentId);
+            }
+            return newSet;
+        });
+    };
+
+    const selectAllConfirmed = () => {
+        const confirmedIds = appointments
+            .filter((apt) => apt.status === 'confirmed')
+            .map((apt) => apt._id);
+        setSelectedAppointments(new Set(confirmedIds));
+    };
+
+    const clearSelection = () => {
+        setSelectedAppointments(new Set());
+    };
+
+    const openWhatsAppModal = () => {
+        if (selectedAppointments.size === 0) {
+            alert('Selecciona al menos un turno para enviar WhatsApp');
+            return;
+        }
+
+        // Generar mensaje por defecto para el primer appointment seleccionado
+        const firstSelectedId = Array.from(selectedAppointments)[0];
+        const firstAppointment = appointments.find(
+            (apt) => apt._id === firstSelectedId
+        );
+
+        if (firstAppointment) {
+            setWhatsappMessage(generateDefaultMessage(firstAppointment));
+        }
+
+        setIsWhatsAppModalOpen(true);
+    };
+
+    const sendManualWhatsApp = async () => {
+        if (selectedAppointments.size === 0 || !whatsappMessage.trim()) {
+            alert('Selecciona turnos y escribe un mensaje');
+            return;
+        }
+
+        setSendingWhatsApp(true);
+
+        try {
+            const selectedAppts = appointments.filter((apt) =>
+                selectedAppointments.has(apt._id)
+            );
+            const encodedMessage = encodeURIComponent(whatsappMessage);
+
+            // Abrir WhatsApp Web para cada cliente
+            selectedAppts.forEach((appointment, index) => {
+                const clientPhone = appointment.clientPhone.replace(/\D/g, '');
+                const whatsappUrl = `https://web.whatsapp.com/send?phone=${clientPhone}&text=${encodedMessage}`;
+
+                // Abrir cada WhatsApp con un pequeño delay para evitar bloqueos
+                setTimeout(() => {
+                    window.open(whatsappUrl, `whatsapp_${appointment._id}`);
+                }, index * 1000); // 1 segundo entre cada ventana
+            });
+
+            // Marcar como enviados en la base de datos
+            const updatePromises = selectedAppts.map(async (appointment) => {
+                try {
+                    const response = await fetch('/api/whatsapp/send', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            appointmentId: appointment._id,
+                            manualSend: true,
+                            message: whatsappMessage,
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        console.error(
+                            `Error marking WhatsApp as sent for ${appointment._id}`
+                        );
+                    }
+                } catch (error) {
+                    console.error(
+                        'Error marcando WhatsApp como enviado:',
+                        error
+                    );
+                }
+            });
+
+            await Promise.all(updatePromises);
+
+            // Actualizar la lista de appointments
+            await fetchAppointments();
+
+            setSendingWhatsApp(false);
+            setIsWhatsAppModalOpen(false);
+            clearSelection();
+            setWhatsappMessage('');
+
+            alert(
+                `✅ Se abrieron ${selectedAppts.length} chats de WhatsApp.\n\nLos turnos han sido marcados como "WhatsApp enviado".`
+            );
+        } catch (error) {
+            console.error('Error en envío masivo de WhatsApp:', error);
+            setSendingWhatsApp(false);
+            alert('❌ Error al procesar el envío de WhatsApp');
+        }
+    };
+
     // Verificar autenticación al cargar
     useEffect(() => {
         checkAuthStatus();
@@ -406,7 +557,7 @@ export default function AdminPanel() {
                                 onChange={(e) =>
                                     setCancelReason(e.target.value)
                                 }
-                                className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500'
+                                className='w-full px-3 py-2 text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500'
                                 rows='3'
                                 placeholder='Ej: Cliente solicitó cancelación, cambio de planes, etc.'
                                 required
@@ -429,7 +580,7 @@ export default function AdminPanel() {
                             <button
                                 onClick={handleCancelAppointment}
                                 disabled={cancellingId || !cancelReason.trim()}
-                                className='flex-1 px-4 py-2 text-white bg-red-600 rounded hover:bg-red-700 disabled:bg-gray-400'
+                                className='flex-1 px-4 py-2 text-gray-700 bg-red-600 rounded hover:bg-red-700 disabled:bg-gray-400'
                             >
                                 {cancellingId
                                     ? 'Cancelando...'
@@ -487,7 +638,7 @@ export default function AdminPanel() {
                             <button
                                 type='submit'
                                 disabled={loading}
-                                className='relative flex justify-center w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400'
+                                className='relative flex justify-center w-full px-4 py-2 text-sm font-medium text-gray-700 bg-indigo-600 border border-transparent rounded-md group hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400'
                             >
                                 {loading ? 'Cargando...' : 'Ingresar'}
                             </button>
@@ -589,7 +740,7 @@ export default function AdminPanel() {
                                     <button
                                         type='button'
                                         onClick={addTimeSlot}
-                                        className='px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600'
+                                        className='px-3 py-1 text-sm text-gray-700 bg-blue-500 rounded hover:bg-blue-600'
                                     >
                                         Agregar Horario
                                     </button>
@@ -630,7 +781,7 @@ export default function AdminPanel() {
                                                 onClick={() =>
                                                     removeTimeSlot(index)
                                                 }
-                                                className='px-2 py-1 text-sm text-white bg-red-500 rounded hover:bg-red-600'
+                                                className='px-2 py-1 text-sm text-gray-700 bg-red-500 rounded hover:bg-red-600'
                                             >
                                                 Eliminar
                                             </button>
@@ -648,7 +799,7 @@ export default function AdminPanel() {
                                     <button
                                         type='button'
                                         onClick={addZone}
-                                        className='px-3 py-1 text-sm text-white bg-green-500 rounded hover:bg-green-600'
+                                        className='px-3 py-1 text-sm text-gray-700 bg-green-500 rounded hover:bg-green-600'
                                     >
                                         Agregar Zona
                                     </button>
@@ -710,7 +861,7 @@ export default function AdminPanel() {
                                                 onClick={() =>
                                                     removeZone(index)
                                                 }
-                                                className='px-2 py-1 text-sm text-white bg-red-500 rounded hover:bg-red-600'
+                                                className='px-2 py-1 text-sm text-gray-700 bg-red-500 rounded hover:bg-red-600'
                                             >
                                                 Eliminar
                                             </button>
@@ -722,7 +873,7 @@ export default function AdminPanel() {
                             <button
                                 type='submit'
                                 disabled={loading}
-                                className='w-full px-4 py-2 text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-400'
+                                className='w-full px-4 py-2 text-gray-700 bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-400'
                             >
                                 {loading
                                     ? 'Creando...'
@@ -820,16 +971,86 @@ export default function AdminPanel() {
                         </div>
                     </div>
                 </div>
-
                 {/* Turnos reservados */}
                 <div className='p-6 bg-white rounded-lg shadow'>
-                    <h2 className='mb-6 text-2xl font-semibold text-gray-800'>
-                        Turnos Reservados ({appointments.length})
-                    </h2>
+                    <div className='flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between'>
+                        <h2 className='text-2xl font-semibold text-gray-800'>
+                            Turnos Reservados ({appointments.length})
+                        </h2>
+
+                        {/* Controles de WhatsApp */}
+                        <div className='flex flex-col gap-3 sm:flex-row sm:items-center'>
+                            <div className='flex gap-2'>
+                                <button
+                                    onClick={selectAllConfirmed}
+                                    className='px-3 py-2 text-sm text-gray-800 bg-blue-600 rounded hover:bg-blue-700'
+                                >
+                                    Seleccionar Confirmados (
+                                    {
+                                        appointments.filter(
+                                            (apt) => apt.status === 'confirmed'
+                                        ).length
+                                    }
+                                    )
+                                </button>
+                                <button
+                                    onClick={clearSelection}
+                                    className='px-3 py-2 text-sm text-gray-700 bg-gray-200 rounded hover:bg-gray-300'
+                                >
+                                    Limpiar ({selectedAppointments.size})
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={openWhatsAppModal}
+                                disabled={selectedAppointments.size === 0}
+                                className='flex items-center gap-2 px-4 py-2 text-gray-800 bg-green-600 rounded hover:bg-green-700 disabled:bg-gray-400'
+                            >
+                                <svg
+                                    className='w-4 h-4'
+                                    fill='currentColor'
+                                    viewBox='0 0 20 20'
+                                >
+                                    <path d='M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z' />
+                                </svg>
+                                WhatsApp Manual ({selectedAppointments.size})
+                            </button>
+                        </div>
+                    </div>
+
                     <div className='overflow-x-auto'>
                         <table className='min-w-full divide-y divide-gray-200'>
                             <thead className='bg-gray-50'>
                                 <tr>
+                                    <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                        <input
+                                            type='checkbox'
+                                            checked={
+                                                selectedAppointments.size ===
+                                                    appointments.filter(
+                                                        (apt) =>
+                                                            apt.status ===
+                                                            'confirmed'
+                                                    ).length &&
+                                                appointments.filter(
+                                                    (apt) =>
+                                                        apt.status ===
+                                                        'confirmed'
+                                                ).length > 0
+                                            }
+                                            onChange={() => {
+                                                if (
+                                                    selectedAppointments.size >
+                                                    0
+                                                ) {
+                                                    clearSelection();
+                                                } else {
+                                                    selectAllConfirmed();
+                                                }
+                                            }}
+                                            className='w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500'
+                                        />
+                                    </th>
                                     <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
                                         Fecha
                                     </th>
@@ -847,6 +1068,9 @@ export default function AdminPanel() {
                                     </th>
                                     <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
                                         Estado
+                                    </th>
+                                    <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
+                                        WhatsApp
                                     </th>
                                     <th className='px-6 py-3 text-xs font-medium text-left text-gray-500 uppercase'>
                                         Acciones
@@ -870,6 +1094,23 @@ export default function AdminPanel() {
                                                     : ''
                                             }
                                         >
+                                            <td className='px-6 py-4 whitespace-nowrap'>
+                                                {appointment.status ===
+                                                    'confirmed' && (
+                                                    <input
+                                                        type='checkbox'
+                                                        checked={selectedAppointments.has(
+                                                            appointment._id
+                                                        )}
+                                                        onChange={() =>
+                                                            toggleAppointmentSelection(
+                                                                appointment._id
+                                                            )
+                                                        }
+                                                        className='w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500'
+                                                    />
+                                                )}
+                                            </td>
                                             <td className='px-6 py-4 text-sm text-gray-900'>
                                                 {new Date(
                                                     appointment.appointmentDate
@@ -891,8 +1132,15 @@ export default function AdminPanel() {
                                                     )}`}
                                                     target='_blank'
                                                     rel='noopener noreferrer'
-                                                    className='text-green-600 hover:text-green-800 hover:underline'
+                                                    className='flex items-center gap-1 text-green-600 hover:text-green-800 hover:underline'
                                                 >
+                                                    <svg
+                                                        className='w-4 h-4'
+                                                        fill='currentColor'
+                                                        viewBox='0 0 20 20'
+                                                    >
+                                                        <path d='M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z' />
+                                                    </svg>
                                                     {appointment.clientPhone}
                                                 </a>
                                             </td>
@@ -918,6 +1166,53 @@ export default function AdminPanel() {
                                                 >
                                                     {appointment.status}
                                                 </span>
+                                            </td>
+                                            <td className='px-6 py-4 text-sm text-gray-900'>
+                                                {appointment.whatsappSent ? (
+                                                    <div className='text-xs'>
+                                                        <span className='inline-flex items-center px-2 py-1 text-green-800 bg-green-100 rounded-full'>
+                                                            <svg
+                                                                className='w-3 h-3 mr-1'
+                                                                fill='currentColor'
+                                                                viewBox='0 0 20 20'
+                                                            >
+                                                                <path
+                                                                    fillRule='evenodd'
+                                                                    d='M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z'
+                                                                    clipRule='evenodd'
+                                                                />
+                                                            </svg>
+                                                            Enviado
+                                                        </span>
+                                                        <div className='mt-1 text-gray-500'>
+                                                            {appointment.whatsappSentAt &&
+                                                                new Date(
+                                                                    appointment.whatsappSentAt
+                                                                ).toLocaleDateString(
+                                                                    'es-AR'
+                                                                )}
+                                                        </div>
+                                                        <div className='text-gray-500'>
+                                                            {appointment.whatsappMethod ||
+                                                                'Manual'}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span className='inline-flex items-center px-2 py-1 text-xs text-gray-600 bg-gray-100 rounded-full'>
+                                                        <svg
+                                                            className='w-3 h-3 mr-1'
+                                                            fill='currentColor'
+                                                            viewBox='0 0 20 20'
+                                                        >
+                                                            <path
+                                                                fillRule='evenodd'
+                                                                d='M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z'
+                                                                clipRule='evenodd'
+                                                            />
+                                                        </svg>
+                                                        Pendiente
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className='px-6 py-4 text-sm text-gray-900'>
                                                 {appointment.status ===
@@ -997,7 +1292,148 @@ export default function AdminPanel() {
                         )}
                     </div>
                 </div>
+                {/* Modal de WhatsApp */}
+                {isWhatsAppModalOpen && (
+                    <div className='fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50'>
+                        <div className='w-full max-w-3xl p-6 mx-4 bg-white rounded-lg max-h-[90vh] overflow-y-auto'>
+                            <h3 className='mb-4 text-lg font-semibold'>
+                                📱 Enviar WhatsApp Manual (
+                                {selectedAppointments.size} turnos)
+                            </h3>
 
+                            <div className='p-4 mb-4 border border-blue-200 rounded-lg bg-blue-50'>
+                                <h4 className='mb-2 font-medium text-blue-800'>
+                                    📋 Turnos seleccionados:
+                                </h4>
+                                <div className='grid gap-2 md:grid-cols-2'>
+                                    {appointments
+                                        .filter((apt) =>
+                                            selectedAppointments.has(apt._id)
+                                        )
+                                        .map((apt) => (
+                                            <div
+                                                key={apt._id}
+                                                className='p-2 text-sm bg-white border rounded'
+                                            >
+                                                <div className='font-medium'>
+                                                    {apt.clientName}{' '}
+                                                    {apt.clientLastName}
+                                                </div>
+                                                <div className='text-gray-600'>
+                                                    📞 {apt.clientPhone}
+                                                </div>
+                                                <div className='text-gray-600'>
+                                                    📅{' '}
+                                                    {new Date(
+                                                        apt.appointmentDate
+                                                    ).toLocaleDateString(
+                                                        'es-AR'
+                                                    )}
+                                                    🕐 {apt.timeSlot.start}
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+                            </div>
+
+                            <div className='mb-4'>
+                                <label className='block mb-2 text-sm font-medium text-gray-700'>
+                                    💬 Mensaje (se enviará a todos los
+                                    seleccionados)
+                                </label>
+                                <textarea
+                                    value={whatsappMessage}
+                                    onChange={(e) =>
+                                        setWhatsappMessage(e.target.value)
+                                    }
+                                    className='w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500'
+                                    rows='12'
+                                    placeholder='Escribe tu mensaje aquí...'
+                                />
+                                <div className='mt-2 text-xs text-gray-500'>
+                                    Caracteres: {whatsappMessage.length}
+                                </div>
+                            </div>
+
+                            <div className='p-4 mb-4 border border-green-200 rounded-lg bg-green-50'>
+                                <h4 className='mb-2 font-medium text-green-800'>
+                                    🚀 Cómo funciona el envío manual:
+                                </h4>
+                                <ol className='space-y-1 text-sm text-green-700'>
+                                    <li>
+                                        1. Se abrirá una pestaña de WhatsApp Web
+                                        para cada cliente
+                                    </li>
+                                    <li>
+                                        2. El mensaje estará pre-cargado, solo
+                                        debes presionar "Enviar"
+                                    </li>
+                                    <li>
+                                        3. Los mensajes se envían desde:{' '}
+                                        <strong>+54 9 2634 631033</strong>
+                                    </li>
+                                    <li>
+                                        4. Se abre una pestaña cada segundo para
+                                        evitar bloqueos
+                                    </li>
+                                    <li>
+                                        5. Los turnos se marcan automáticamente
+                                        como "WhatsApp enviado"
+                                    </li>
+                                </ol>
+                            </div>
+
+                            <div className='flex space-x-3'>
+                                <button
+                                    onClick={() => {
+                                        setIsWhatsAppModalOpen(false);
+                                        setWhatsappMessage('');
+                                    }}
+                                    className='flex-1 px-4 py-2 text-gray-700 bg-gray-200 rounded hover:bg-gray-300'
+                                >
+                                    ❌ Cancelar
+                                </button>
+                                <button
+                                    onClick={sendManualWhatsApp}
+                                    disabled={
+                                        sendingWhatsApp ||
+                                        !whatsappMessage.trim()
+                                    }
+                                    className='px-6 py-2 text-gray-700 bg-green-600 rounded flex-2 hover:bg-green-700 disabled:bg-gray-400'
+                                >
+                                    {sendingWhatsApp ? (
+                                        <span className='flex items-center'>
+                                            <svg
+                                                className='w-4 h-4 mr-3 -ml-1 text-gray-700 animate-spin'
+                                                xmlns='http://www.w3.org/2000/svg'
+                                                fill='none'
+                                                viewBox='0 0 24 24'
+                                            >
+                                                <circle
+                                                    className='opacity-25'
+                                                    cx='12'
+                                                    cy='12'
+                                                    r='10'
+                                                    stroke='currentColor'
+                                                    strokeWidth='4'
+                                                ></circle>
+                                                <path
+                                                    className='opacity-75'
+                                                    fill='currentColor'
+                                                    d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+                                                ></path>
+                                            </svg>
+                                            Enviando...
+                                        </span>
+                                    ) : (
+                                        `📱 Enviar a ${selectedAppointments.size} clientes`
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {/* Mantener el modal de cancelación existente */}
                 {showCancelModal && <CancelModal />}
             </div>
         </div>

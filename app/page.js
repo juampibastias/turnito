@@ -2,6 +2,10 @@
 import { useState, useEffect } from 'react';
 import { format, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
+import {
+    validateArgentinePhone,
+    formatPhoneForDisplay,
+} from '../lib/phoneUtils';
 
 export default function Home() {
     const [step, setStep] = useState(1);
@@ -138,10 +142,10 @@ export default function Home() {
             return false;
         }
 
-        // Validar formato de teléfono básico
-        const phonePattern = /^[\d\s\-\+\(\)]+$/;
-        if (!phonePattern.test(clientData.phone)) {
-            setError('Por favor ingresa un número de teléfono válido.');
+        // Validar formato de teléfono con las utilidades
+        const phoneValidation = validateArgentinePhone(clientData.phone);
+        if (!phoneValidation.isValid) {
+            setError(phoneValidation.error);
             return false;
         }
 
@@ -159,6 +163,19 @@ export default function Home() {
         setError('');
 
         try {
+            // Validar y normalizar teléfono antes de enviar
+            const phoneValidation = validateArgentinePhone(clientData.phone);
+            const normalizedPhone = phoneValidation.normalized;
+
+            console.log('[BOOKING] Enviando datos:', {
+                clientName: clientData.name.trim(),
+                clientLastName: clientData.lastName.trim(),
+                clientPhone: normalizedPhone,
+                selectedZones,
+                appointmentDate: selectedDate,
+                timeSlot: selectedSlot,
+            });
+
             const response = await fetch('/api/appointments', {
                 method: 'POST',
                 headers: {
@@ -167,7 +184,7 @@ export default function Home() {
                 body: JSON.stringify({
                     clientName: clientData.name.trim(),
                     clientLastName: clientData.lastName.trim(),
-                    clientPhone: clientData.phone.trim(),
+                    clientPhone: normalizedPhone,
                     selectedZones,
                     appointmentDate: selectedDate,
                     timeSlot: selectedSlot,
@@ -175,18 +192,24 @@ export default function Home() {
             });
 
             const data = await response.json();
+            console.log('[BOOKING] Respuesta del servidor:', data);
 
             if (response.ok && data.initPoint) {
+                console.log(
+                    '[BOOKING] Redirigiendo a MercadoPago:',
+                    data.initPoint
+                );
                 // Redirigir a MercadoPago
                 window.location.href = data.initPoint;
             } else {
+                console.error('[BOOKING] Error en respuesta:', data);
                 setError(
                     data.message ||
                         'Error al crear la reserva. Por favor intenta nuevamente.'
                 );
             }
         } catch (error) {
-            console.error('Error creating booking:', error);
+            console.error('[BOOKING] Error creating booking:', error);
             setError(
                 'Error de conexión. Por favor verifica tu internet e intenta nuevamente.'
             );
@@ -579,9 +602,13 @@ export default function Home() {
                                                     }))
                                                 }
                                                 className='w-full px-4 py-3 text-gray-800 border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent'
-                                                placeholder='Tu número de teléfono'
+                                                placeholder='+54 11 1234-5678'
                                                 required
                                             />
+                                            <p className='mt-1 text-xs text-gray-500'>
+                                                Formato: +54 área número (ej:
+                                                +54 11 1234-5678)
+                                            </p>
                                         </div>
                                     </div>
 
