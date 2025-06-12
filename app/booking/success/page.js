@@ -234,7 +234,7 @@ export default function SuccessPage() {
                                 Volver al inicio
                             </a>
                             <a
-                                href='https://wa.me/1234567890'
+                                href='https://wa.me/2634631033'
                                 target='_blank'
                                 rel='noopener noreferrer'
                                 className='inline-block w-full px-8 py-3 font-semibold text-white bg-green-500 rounded-lg hover:bg-green-600'
